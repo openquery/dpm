@@ -47,7 +47,7 @@ int main (int argc, char **argv)
     addr.sin_port = htons(5500);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(l_socket, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+    if (bind(l_socket, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         perror("binding server socket");
         close(l_socket);
         return -1;
