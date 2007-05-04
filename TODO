@@ -1,0 +1,16 @@
+PRACTICE:
+
+set libevent to listen on socket with callback, accept sockets.
+signal ignore sigpipe
+signal handle sigint?
+handle reading data on socket, printing locally.
+handle writing data back to socket
+try basic ragel implementation to handle reading/writing commands
+embed lua; pass input commands to lua, allow callback to set config vars
+see about implementing mysql protocol (as a server)
+see about working mysql protocol (as a client)
+(how much can be done in lua? perhaps?)
+more libevent infrastructure; timers, buffering
+memory management; caching connection shit. malloc big range. reuse buffers.
+
+
