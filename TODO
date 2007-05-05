@@ -1,6 +1,7 @@
 PRACTICE:
 
-set libevent to listen on socket with callback, accept sockets.
+DONE ### set libevent to listen on socket with callback, accept sockets.
+move other nonblock setting to function
 signal ignore sigpipe
 signal handle sigint?
 handle reading data on socket, printing locally.
@@ -12,5 +13,6 @@ see about working mysql protocol (as a client)
 (how much can be done in lua? perhaps?)
 more libevent infrastructure; timers, buffering
 memory management; caching connection shit. malloc big range. reuse buffers.
-
+use multiple .c files to make the program.
+write a makefile
 
