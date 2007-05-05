@@ -21,7 +21,7 @@
 
 static int l_socket = 0;
 
-void set_sock_nonblock(int fd)
+int set_sock_nonblock(int fd)
 {
     int flags = 1;
 
@@ -29,7 +29,10 @@ void set_sock_nonblock(int fd)
         fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
         perror("Could not set O_NONBLOCK");
         close(fd);
+        return -1;
     }
+
+    return 0;
 }
 
 void handle_event(int fd, short event, void *arg)
@@ -64,7 +67,7 @@ int main (int argc, char **argv)
 {
     struct event ev;
     struct sockaddr_in addr;
-    int flags;
+    int flags = 1;
 
     // Initialize the server socket. Nonblock/reuse/etc.
 
@@ -73,14 +76,8 @@ int main (int argc, char **argv)
         return -1;
     }
 
-    if ( (flags = fcntl(l_socket, l_socket, F_GETFL, 0)) < 0 ||
-        fcntl(l_socket, F_SETFL, flags | O_NONBLOCK) < 0) {
-        perror("couldn't set O_NONBLOCK");
-        close(l_socket);
-        return -1;
-    }
+    set_sock_nonblock(l_socket);
 
-    flags = 1;
     setsockopt(l_socket, SOL_SOCKET, SO_REUSEADDR, (void *)&flags, sizeof(flags));
     setsockopt(l_socket, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
 

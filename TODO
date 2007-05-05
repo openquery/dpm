@@ -1,7 +1,6 @@
 PRACTICE:
 
 DONE ### set libevent to listen on socket with callback, accept sockets.
-move other nonblock setting to function
 signal ignore sigpipe
 signal handle sigint?
 handle reading data on socket, printing locally.
