@@ -17,7 +17,13 @@
 #include <string.h>
 #include <errno.h>
 
+/* libevent specifics */
 #include <event.h>
+
+/* Lua specifics */
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
 
 static int l_socket = 0; // server socket. duh :P
 
@@ -76,7 +82,8 @@ void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
     conn *newc;
-    int newfd;
+    int newfd, rbytes;
+    char *resp = "Helllllllllooooooooo, nurse!\n";
 
     // if we're the server socket, it's a new conn.
     if (fd == l_socket) {
@@ -95,9 +102,12 @@ void handle_event(int fd, short event, void *arg)
         /* Client socket. */
         fprintf(stdout, "Got new client event on %d\n", fd);
         /* TESTING: Junk read */
-        read(fd, c->rbuf, 512);
+        rbytes = read(fd, c->rbuf, 511);
+        c->rbuf[rbytes] = '\0';
         fprintf(stdout, "Read from client: %s", c->rbuf);
-        memset(c->rbuf, 0, 512); /* clear buffer after read */
+        // memset(c->rbuf, 0, 512); /* clear buffer after read */
+
+        write(fd, resp, strlen(resp));
     }
 }
 
@@ -107,6 +117,7 @@ int main (int argc, char **argv)
     conn *listener;
     struct sigaction sa;
     int flags = 1;
+    lua_State *L;
 
     // Initialize the server socket. Nonblock/reuse/etc.
 
@@ -158,6 +169,15 @@ int main (int argc, char **argv)
     }
 
     signal(SIGHUP, sig_hup);
+
+    /* Fire up LUA */
+
+    L = lua_open();
+
+    if (L == NULL) {
+        fprintf(stderr, "Could not create lua state\n");
+        exit(-1);
+    }
 
     event_dispatch();
 

@@ -4,7 +4,7 @@ DONE ### set libevent to listen on socket with callback, accept sockets.
 DONE ### signal ignore sigpipe
 DONE ### handle reading data on socket, printing locally.
 DONE ### handle SIGHUP
-handle writing data back to socket
+DONE ### handle writing data back to socket
 try basic ragel implementation to handle reading/writing commands
 embed lua; pass input commands to lua, allow callback to set config vars
 proper read/write buffering for event sockets.
@@ -15,3 +15,5 @@ more libevent infrastructure; timers, buffering
 memory management; caching connection shit. malloc big range. reuse buffers.
 use multiple .c files to make the program.
 write a makefile
+readv/writev for read/write iovecs? learn how to use scatter/gather
+use iovecs or custom buffer for buffering?
