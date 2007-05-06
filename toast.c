@@ -91,6 +91,7 @@ void handle_event(int fd, short event, void *arg)
         /* TESTING: Junk read */
         read(fd, c->rbuf, 512);
         fprintf(stdout, "Read from client: %s", c->rbuf);
+        memset(c->rbuf, 0, 512); /* clear buffer after read */
     }
 }
 
