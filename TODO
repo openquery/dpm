@@ -1,9 +1,9 @@
 PRACTICE:
 
 DONE ### set libevent to listen on socket with callback, accept sockets.
-signal ignore sigpipe
-signal handle sigint?
+DONE ### signal ignore sigpipe
 DONE ### handle reading data on socket, printing locally.
+DONE ### handle SIGHUP
 handle writing data back to socket
 try basic ragel implementation to handle reading/writing commands
 embed lua; pass input commands to lua, allow callback to set config vars
@@ -15,4 +15,3 @@ more libevent infrastructure; timers, buffering
 memory management; caching connection shit. malloc big range. reuse buffers.
 use multiple .c files to make the program.
 write a makefile
-

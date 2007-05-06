@@ -33,6 +33,12 @@ typedef struct {
     int    write; /* bytes of buffer used */
 } conn;
 
+
+/* Stub function. In the future, should set a flag to reload or dump stuff */
+static void sig_hup(const int sig) {
+    fprintf(stdout, "Got reload request.\n");
+}
+
 int set_sock_nonblock(int fd)
 {
     int flags = 1;
@@ -99,6 +105,7 @@ int main (int argc, char **argv)
 {
     struct sockaddr_in addr;
     conn *listener;
+    struct sigaction sa;
     int flags = 1;
 
     // Initialize the server socket. Nonblock/reuse/etc.
@@ -138,6 +145,19 @@ int main (int argc, char **argv)
 
     event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
     event_add(&listener->ev, NULL);
+
+    /* Lets ignore SIGPIPE... sorry, just about yanking this from memcached.
+     * I tried to use the manpages but it came out exactly the same :P
+     */
+
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags   = 0;
+    if (sigemptyset(&sa.sa_mask) == -1 || sigaction(SIGPIPE, &sa, 0) == -1) {
+        perror("Could not ignore SIGPIPE: sigaction");
+        exit(-1);
+    }
+
+    signal(SIGHUP, sig_hup);
 
     event_dispatch();
 
