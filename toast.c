@@ -19,7 +19,19 @@
 
 #include <event.h>
 
-static int l_socket = 0;
+static int l_socket = 0; // server socket. duh :P
+
+typedef struct {
+    int    fd;
+    struct event ev;
+    short  ev_flags; /* only way to be able to read current flags? */
+
+    /* FIXME : Dynamic buffers. */
+    char   rbuf[500];
+    int    read; /* bytes of buffer used */
+    char   wbuf[500];
+    int    write; /* bytes of buffer used */
+} conn;
 
 int set_sock_nonblock(int fd)
 {
@@ -35,38 +47,57 @@ int set_sock_nonblock(int fd)
     return 0;
 }
 
-void handle_event(int fd, short event, void *arg)
+int handle_accept(int fd)
 {
-    struct event *ev = arg;
     struct sockaddr_in addr;
     socklen_t addrlen;
     int newfd;
 
-    fprintf(stdout, "WHEEE!! %i\n", event);
+    if ( (newfd = accept(fd, (struct sockaddr *)&addr, &addrlen)) == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            fprintf(stderr, "interesting error blocking on accept. ignore?\n");
+        } else if (errno == EMFILE) {
+            fprintf(stderr, "Holy crap out of FDs!\n");
+        } else {
+            perror("Died on accept");
+        }
+    }
+
+    return newfd;
+}
+
+void handle_event(int fd, short event, void *arg)
+{
+    conn *c = arg;
+    conn *newc;
+    int newfd;
 
     // if we're the server socket, it's a new conn.
     if (fd == l_socket) {
-        if ( (newfd = accept(fd, (struct sockaddr *)&addr, &addrlen)) == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                fprintf(stderr, "interesting error blocking on accept. ignore?\n");
-            } else if (errno == EMFILE) {
-                fprintf(stderr, "Holy crap out of FDs!\n");
-            } else {
-                perror("Died on accept");
-            }
-        }
+        newfd = handle_accept(fd); /* error handling */
         fprintf(stdout, "Got new client sock %d\n", newfd);
         set_sock_nonblock(newfd);
 
-        event_set(ev, newfd, EV_READ | EV_PERSIST, handle_event, ev);
-        event_add(ev, NULL);
+        /* client typedef init should be its own function */
+        newc = (conn *)malloc( sizeof(conn) ); /* error handling */
+        newc->fd = newfd;
+        newc->ev_flags = EV_READ | EV_PERSIST;
+        event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
+        event_add(&newc->ev, NULL); /* error handling */
+
+    } else {
+        /* Client socket. */
+        fprintf(stdout, "Got new client event on %d\n", fd);
+        /* TESTING: Junk read */
+        read(fd, c->rbuf, 512);
+        fprintf(stdout, "Read from client: %s", c->rbuf);
     }
 }
 
 int main (int argc, char **argv)
 {
-    struct event ev;
     struct sockaddr_in addr;
+    conn *listener;
     int flags = 1;
 
     // Initialize the server socket. Nonblock/reuse/etc.
@@ -97,11 +128,15 @@ int main (int argc, char **argv)
         return -1;
     }
 
+    listener = (conn *)malloc( sizeof(conn) ); /* error handling */
+
+    listener->ev_flags = EV_READ | EV_PERSIST;
+
     // Initialize the event system.
     event_init();
 
-    event_set(&ev, l_socket, EV_READ | EV_PERSIST, handle_event, &ev);
-    event_add(&ev, NULL);
+    event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
+    event_add(&listener->ev, NULL);
 
     event_dispatch();
 
