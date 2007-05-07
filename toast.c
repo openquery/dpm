@@ -26,6 +26,7 @@
 #include <lualib.h>
 
 static int l_socket = 0; // server socket. duh :P
+static struct lua_State *L; // global lua state.
 
 typedef struct {
     int    fd;
@@ -117,7 +118,6 @@ int main (int argc, char **argv)
     conn *listener;
     struct sigaction sa;
     int flags = 1;
-    lua_State *L;
 
     // Initialize the server socket. Nonblock/reuse/etc.
 
