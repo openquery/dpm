@@ -7,7 +7,7 @@ DONE ### handle SIGHUP
 DONE ### handle writing data back to socket
 NAH  ###try basic ragel implementation to handle reading/writing commands
 WORK # embed lua; pass input commands to lua, allow callback to set config vars
-proper read/write buffering for event sockets.
+WORK # proper read/write buffering for event sockets.
 see about implementing mysql protocol (as a server)
 see about working mysql protocol (as a client)
 (how much can be done in lua? perhaps?)

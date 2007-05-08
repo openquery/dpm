@@ -25,6 +25,8 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#define BUF_SIZE 1024
+
 static int l_socket = 0; // server socket. duh :P
 static struct lua_State *L; // global lua state.
 
@@ -34,12 +36,13 @@ typedef struct {
     short  ev_flags; /* only way to be able to read current flags? */
 
     /* FIXME : Dynamic buffers. */
-    char   rbuf[500];
+    char   *rbuf;
+    int    rbufsize;
     int    read; /* bytes of buffer used */
-    char   wbuf[500];
-    int    write; /* bytes of buffer used */
+    char   *wbuf;
+    int    wbufsize;
+    int    written; /* bytes of buffer used */
 } conn;
-
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
 static void sig_hup(const int sig) {
@@ -85,10 +88,17 @@ static void handle_close(conn *c)
     close(c->fd);
 
     fprintf(stdout, "Closed connection for %d\n", c->fd);
+    if (c->rbuf) free(c->rbuf);
+    if (c->wbuf) free(c->wbuf);
     free(c);
 }
 
-void handle_event(int fd, short event, void *arg)
+/*static int handle_read(conn c*)
+{
+
+}*/
+
+static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
     conn *newc;
@@ -97,6 +107,7 @@ void handle_event(int fd, short event, void *arg)
 
     // if we're the server socket, it's a new conn.
     if (fd == l_socket) {
+        /* FIXME : Move the rest of this shit to another function. */
         newfd = handle_accept(fd); /* error handling */
         fprintf(stdout, "Got new client sock %d\n", newfd);
         set_sock_nonblock(newfd);
@@ -105,9 +116,29 @@ void handle_event(int fd, short event, void *arg)
         newc = (conn *)malloc( sizeof(conn) ); /* error handling */
         newc->fd = newfd;
         newc->ev_flags = EV_READ | EV_PERSIST;
+   
+        /* Set up the buffers. */
+        newc->rbuf     = 0;
+        newc->wbuf     = 0;
+        newc->rbufsize = BUF_SIZE;
+        newc->wbufsize = BUF_SIZE;
+        newc->read     = 0;
+        newc->written  = 0;
+
+        newc->rbuf = (char *)malloc( (size_t)newc->rbufsize );
+        newc->wbuf = (char *)malloc( (size_t)newc->wbufsize );
+
+        /* Cleaner way to do this? I guess not with C */
+        if (newc->rbuf == 0 || newc->wbuf == 0) {
+            if (newc->rbuf != 0) free(newc->rbuf);
+            if (newc->wbuf != 0) free(newc->wbuf);
+            free(newc);
+            perror("Could not malloc()");
+            return;
+        }
+
         event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
         event_add(&newc->ev, NULL); /* error handling */
-
     } else {
         /* Client socket. */
         fprintf(stdout, "Got new client event on %d\n", fd);
@@ -120,6 +151,7 @@ void handle_event(int fd, short event, void *arg)
             return;
         } else if (rbytes == -1) {
             /* Why do these happen? :\ Don't fully understand. */
+            /* FIXME : This is part of handle read. read until no more data */
             if (errno == EAGAIN || errno == EWOULDBLOCK) return;
         }
 
