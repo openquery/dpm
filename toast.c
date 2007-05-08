@@ -102,12 +102,60 @@ static void handle_close(conn *c)
     free(c);
 }
 
-/*static int handle_read(conn c*)
+static int handle_read(conn *c)
 {
+    int rbytes;
+    int newdata = 0;
+    char *new_rbuf;
+
     for(;;) {
+        /* We're in trouble if read is larger than rbufsize, right? ;) 
+         * Anyhoo, if so, we want to realloc up the buffer.
+         * TODO: Share buffers so we don't realloc so often... */
+        if (c->read >= c->rbufsize) {
+            /* I'd prefer 1.5... */
+            fprintf(stdout, "Holy crap! Reallocing buffer from %d to %d\n",
+                    c->rbufsize, c->rbufsize * 2);
+            new_rbuf = realloc(c->rbuf, c->rbufsize * 2);
+
+            if (new_rbuf == NULL) {
+                perror("Realloc input buffer");
+                /* FIXME: Should tell user we're abanonding ship. */
+                handle_close(c);
+                return -1;
+            }
+
+            /* The start of the new buffer might've changed: realloc(2) */
+            c->rbuf = new_rbuf;
+            c->rbufsize *= 2;
+        }
+
         // while bytes from read, pack into buffer. return when would block
+        rbytes = read(c->fd, c->rbuf + c->read, c->rbufsize - c->read);
+
+        /* If signaled for reading and got zero bytes, close it up 
+         * FIXME : Should we flush the command? */
+        if (rbytes == 0) {
+            handle_close(c);
+            return -1;
+        } else if (rbytes == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else {
+                return -1;
+            }
+        }
+
+        /* Successfuly read. Mark our progress */
+        c->read += rbytes;
+        newdata += rbytes;
     }
-}*/
+
+    /* Allows caller to arbitrarily measure progress, since we use a binary
+     * protocol. "Did we get enough bytes to satisfy len? No? Yawn. Nap."
+     */
+    return newdata;
+}
 
 static void handle_event(int fd, short event, void *arg)
 {
@@ -153,21 +201,12 @@ static void handle_event(int fd, short event, void *arg)
     } else {
         /* Client socket. */
         fprintf(stdout, "Got new client event on %d\n", fd);
-        /* TESTING: Junk read */
-        rbytes = read(fd, c->rbuf, 511);
 
-        /* If signaled for reading and got zero bytes, close it up */
-        if (rbytes == 0) {
-            handle_close(c);
-            return;
-        } else if (rbytes == -1) {
-            /* Why do these happen? :\ Don't fully understand. */
-            /* FIXME : This is part of handle read. read until no more data */
-            if (errno == EAGAIN || errno == EWOULDBLOCK) return;
-        }
+        rbytes = handle_read(c);
 
         c->rbuf[rbytes] = '\0';
         fprintf(stdout, "Read from client: %s", c->rbuf);
+        c->read = 0;
         // memset(c->rbuf, 0, 512); /* clear buffer after read */
 
         write(fd, resp, strlen(resp));
