@@ -232,7 +232,6 @@ static void handle_event(int fd, short event, void *arg)
         c->rbuf[rbytes] = '\0';
         fprintf(stdout, "Read from client: %s", c->rbuf);
         c->read = 0;
-        // memset(c->rbuf, 0, 512); /* clear buffer after read */
 
         write(fd, resp, strlen(resp));
     }
