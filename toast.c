@@ -1,4 +1,4 @@
-/* ME MAN PLAY WITH STUFF! */
+/* Plaything C event server with scripting support */
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -60,7 +60,7 @@ int set_sock_nonblock(int fd)
     return 0;
 }
 
-int handle_accept(int fd)
+static int handle_accept(int fd)
 {
     struct sockaddr_in addr;
     socklen_t addrlen;
@@ -77,6 +77,15 @@ int handle_accept(int fd)
     }
 
     return newfd;
+}
+
+static void handle_close(conn *c)
+{
+    event_del(&c->ev);
+    close(c->fd);
+
+    fprintf(stdout, "Closed connection for %d\n", c->fd);
+    free(c);
 }
 
 void handle_event(int fd, short event, void *arg)
@@ -104,6 +113,16 @@ void handle_event(int fd, short event, void *arg)
         fprintf(stdout, "Got new client event on %d\n", fd);
         /* TESTING: Junk read */
         rbytes = read(fd, c->rbuf, 511);
+
+        /* If signaled for reading and got zero bytes, close it up */
+        if (rbytes == 0) {
+            handle_close(c);
+            return;
+        } else if (rbytes == -1) {
+            /* Why do these happen? :\ Don't fully understand. */
+            if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+        }
+
         c->rbuf[rbytes] = '\0';
         fprintf(stdout, "Read from client: %s", c->rbuf);
         // memset(c->rbuf, 0, 512); /* clear buffer after read */
