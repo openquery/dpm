@@ -41,6 +41,7 @@ typedef struct {
     char   *wbuf;
     int    wbufsize;
     int    written; /* bytes of buffer used */
+    int    towrite; /* end bytelength of write buffer. */
 } conn;
 
 /* Declarations */
@@ -51,6 +52,9 @@ static void handle_close(conn *c);
 static int handle_read(conn *c);
 static conn *init_conn(int newfd);
 static void handle_event(int fd, short event, void *arg);
+static int add_conn_event(conn *c, const int new_flags);
+static int del_conn_event(conn *c, const int new_flags);
+static int update_conn_event(conn *c, const int new_flags);
 
 /* Icky ewwy global vars. */
 
@@ -86,6 +90,32 @@ int set_sock_nonblock(int fd)
     return 0;
 }
 
+static int add_conn_event(conn *c, const int new_flags)
+{
+    int ret;
+    ret = update_conn_event(c, c->ev_flags | new_flags);
+    return ret;
+}
+
+static int del_conn_event(conn *c, const int new_flags)
+{
+    int ret;
+    ret = update_conn_event(c, c->ev_flags & new_flags);
+    return ret;
+}
+
+static int update_conn_event(conn *c, const int new_flags)
+{
+    if (c->ev_flags == new_flags) return 1;
+    if (event_del(&c->ev) == -1) return 0;
+
+    c->ev_flags = new_flags;
+    event_set(&c->ev, c->fd, new_flags, handle_event, (void *)c);
+
+    if (event_add(&c->ev, 0) == -1) return 0;
+    return 1;
+}
+
 static int handle_accept(int fd)
 {
     struct sockaddr_in addr;
@@ -116,6 +146,51 @@ static void handle_close(conn *c)
     free(c);
 }
 
+/* handle buffering writes... we're looking for EAGAIN until we stop
+ * transmitting.
+ * We're assuming the write data was pre-populated.
+ * TODO: This means we need another function for ensuring write buffer
+ * is the right size?
+ * NOTE: Need to support changes in written between calls
+ */
+static int handle_write(conn *c)
+{
+    int wbytes;
+    int written = 0;
+
+    for(;;) {
+        /* FIXME: Should we clear the EV_WRITE flag? */
+        if (c->written >= c->towrite) {
+            fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
+            break;
+        }
+
+        wbytes = send(c->fd, c->wbuf + c->written, c->towrite - c->written, 0);
+
+        if (wbytes == 0) {
+            handle_close(c);
+            return -1;
+        } else if (wbytes == -1 ) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if (add_conn_event(c, EV_WRITE) == 0) {
+                    fprintf(stderr, "Couldn't add write watch to %d", c->fd);
+                    handle_close(c);
+                }
+            } else {
+                handle_close(c);
+                return -1;
+            }
+        }
+
+        c->written += wbytes;
+        written    += wbytes;
+    }
+
+    return written;
+}
+
+/* Handle buffered read events. Read into the buffer until we would block.
+ * returns the total number of bytes read in the session. */
 static int handle_read(conn *c)
 {
     int rbytes;
@@ -128,7 +203,7 @@ static int handle_read(conn *c)
          * TODO: Share buffers so we don't realloc so often... */
         if (c->read >= c->rbufsize) {
             /* I'd prefer 1.5... */
-            fprintf(stdout, "Holy crap! Reallocing buffer from %d to %d\n",
+            fprintf(stdout, "Reallocing input buffer from %d to %d\n",
                     c->rbufsize, c->rbufsize * 2);
             new_rbuf = realloc(c->rbuf, c->rbufsize * 2);
 
@@ -156,6 +231,7 @@ static int handle_read(conn *c)
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             } else {
+                handle_close(c);
                 return -1;
             }
         }
@@ -215,9 +291,8 @@ static void handle_event(int fd, short event, void *arg)
     int newfd, rbytes;
     char *resp = "Helllllllllooooooooo, nurse!\n";
 
-    // if we're the server socket, it's a new conn.
+    /* if we're the server socket, it's a new conn */
     if (fd == l_socket) {
-        /* FIXME : Move the rest of this shit to another function. */
         newfd = handle_accept(fd); /* error handling */
         fprintf(stdout, "Got new client sock %d\n", newfd);
 
@@ -228,12 +303,18 @@ static void handle_event(int fd, short event, void *arg)
         fprintf(stdout, "Got new client event on %d\n", fd);
 
         rbytes = handle_read(c);
+        /* FIXME : Should we do the error handling at this level? Or lower? */
+        if (rbytes < 1) return;
 
         c->rbuf[rbytes] = '\0';
-        fprintf(stdout, "Read from client: %s", c->rbuf);
+        fprintf(stdout, "Read (%d) from client: %s", rbytes, c->rbuf);
         c->read = 0;
 
-        write(fd, resp, strlen(resp));
+        c->written = 0;
+        memcpy(c->wbuf, resp, strlen(resp));
+        c->towrite = strlen(resp);
+        handle_write(c);
+        //write(fd, resp, strlen(resp));
     }
 }
 
