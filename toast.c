@@ -27,9 +27,8 @@
 
 #define BUF_SIZE 1024
 
-static int l_socket = 0; // server socket. duh :P
-static struct lua_State *L; // global lua state.
-
+/* Structs...
+ * FIXME: Header file? */
 typedef struct {
     int    fd;
     struct event ev;
@@ -44,6 +43,20 @@ typedef struct {
     int    written; /* bytes of buffer used */
 } conn;
 
+/* Declarations */
+static void sig_hup(const int sig);
+int set_sock_nonblock(int fd);
+static int handle_accept(int fd);
+static void handle_close(conn *c);
+static int handle_read(conn *c);
+static conn *init_conn(int newfd);
+static void handle_event(int fd, short event, void *arg);
+
+/* Icky ewwy global vars. */
+
+static int l_socket = 0; // server socket. duh :P
+static struct lua_State *L; // global lua state.
+
 /* MySQL protocol handler...
  * everything starts with 3 byte len, 1 byte seq.
  * can assume read at least 4 bytes before parsing. discover len once have 4
@@ -54,7 +67,8 @@ typedef struct {
  */
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
-static void sig_hup(const int sig) {
+static void sig_hup(const int sig)
+{
     fprintf(stdout, "Got reload request.\n");
 }
 
@@ -157,6 +171,43 @@ static int handle_read(conn *c)
     return newdata;
 }
 
+static conn *init_conn(int newfd)
+{
+    conn *newc;
+
+    /* client typedef init should be its own function */
+    newc = (conn *)malloc( sizeof(conn) ); /* error handling */
+    newc->fd = newfd;
+    newc->ev_flags = EV_READ | EV_PERSIST;
+   
+    /* Set up the buffers. */
+    newc->rbuf     = 0;
+    newc->wbuf     = 0;
+    newc->rbufsize = BUF_SIZE;
+    newc->wbufsize = BUF_SIZE;
+    newc->read     = 0;
+    newc->written  = 0;
+
+    newc->rbuf = (char *)malloc( (size_t)newc->rbufsize );
+    newc->wbuf = (char *)malloc( (size_t)newc->wbufsize );
+
+    /* Cleaner way to do this? I guess not with C */
+    if (newc->rbuf == 0 || newc->wbuf == 0) {
+        if (newc->rbuf != 0) free(newc->rbuf);
+        if (newc->wbuf != 0) free(newc->wbuf);
+        free(newc);
+        perror("Could not malloc()");
+        return NULL;
+    }
+
+    event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
+    event_add(&newc->ev, NULL); /* error handling */
+
+    fprintf(stdout, "Made new conn structure for %d\n", newfd);
+
+    return newc;
+}
+
 static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
@@ -169,36 +220,10 @@ static void handle_event(int fd, short event, void *arg)
         /* FIXME : Move the rest of this shit to another function. */
         newfd = handle_accept(fd); /* error handling */
         fprintf(stdout, "Got new client sock %d\n", newfd);
+
         set_sock_nonblock(newfd);
-
-        /* client typedef init should be its own function */
-        newc = (conn *)malloc( sizeof(conn) ); /* error handling */
-        newc->fd = newfd;
-        newc->ev_flags = EV_READ | EV_PERSIST;
-   
-        /* Set up the buffers. */
-        newc->rbuf     = 0;
-        newc->wbuf     = 0;
-        newc->rbufsize = BUF_SIZE;
-        newc->wbufsize = BUF_SIZE;
-        newc->read     = 0;
-        newc->written  = 0;
-
-        newc->rbuf = (char *)malloc( (size_t)newc->rbufsize );
-        newc->wbuf = (char *)malloc( (size_t)newc->wbufsize );
-
-        /* Cleaner way to do this? I guess not with C */
-        if (newc->rbuf == 0 || newc->wbuf == 0) {
-            if (newc->rbuf != 0) free(newc->rbuf);
-            if (newc->wbuf != 0) free(newc->wbuf);
-            free(newc);
-            perror("Could not malloc()");
-            return;
-        }
-
-        event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
-        event_add(&newc->ev, NULL); /* error handling */
-    } else {
+        newc = init_conn(newfd); /* error handling? I guess it doesn't matter. */
+   } else {
         /* Client socket. */
         fprintf(stdout, "Got new client event on %d\n", fd);
 
