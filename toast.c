@@ -35,7 +35,7 @@ typedef struct {
     struct event ev;
     short  ev_flags; /* only way to be able to read current flags? */
 
-    /* FIXME : Dynamic buffers. */
+    /* Dynamic boofers */
     char   *rbuf;
     int    rbufsize;
     int    read; /* bytes of buffer used */
@@ -43,6 +43,15 @@ typedef struct {
     int    wbufsize;
     int    written; /* bytes of buffer used */
 } conn;
+
+/* MySQL protocol handler...
+ * everything starts with 3 byte len, 1 byte seq.
+ * can assume read at least 4 bytes before parsing. discover len once have 4
+ * bytes. read until len is satisfied.
+ * mind special case of > 16MB packets.
+ * conn needs states enum for mysql protocol
+ * need state machine for dealing with packet once buffered.
+ */
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
 static void sig_hup(const int sig) {
@@ -95,7 +104,9 @@ static void handle_close(conn *c)
 
 /*static int handle_read(conn c*)
 {
-
+    for(;;) {
+        // while bytes from read, pack into buffer. return when would block
+    }
 }*/
 
 static void handle_event(int fd, short event, void *arg)
