@@ -298,9 +298,9 @@ static void handle_event(int fd, short event, void *arg)
 
         set_sock_nonblock(newfd);
         newc = init_conn(newfd); /* error handling? I guess it doesn't matter. */
-   } else {
+   } else if (event == EV_READ) {
         /* Client socket. */
-        fprintf(stdout, "Got new client event on %d\n", fd);
+        fprintf(stdout, "Got new read event on %d\n", fd);
 
         rbytes = handle_read(c);
         /* FIXME : Should we do the error handling at this level? Or lower? */
@@ -315,6 +315,10 @@ static void handle_event(int fd, short event, void *arg)
         c->towrite = strlen(resp);
         handle_write(c);
         //write(fd, resp, strlen(resp));
+    } else if (event == EV_WRITE) {
+        fprintf(stdout, "Got new write event on %d\n", fd);
+     
+        handle_write(c);
     }
 }
 
