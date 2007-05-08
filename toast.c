@@ -284,6 +284,7 @@ static conn *init_conn(int newfd)
     return newc;
 }
 
+/* FIXME: CAN BE _BOTH_ EV_READ AND EV_WRITE! */
 static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
@@ -298,7 +299,10 @@ static void handle_event(int fd, short event, void *arg)
 
         set_sock_nonblock(newfd);
         newc = init_conn(newfd); /* error handling? I guess it doesn't matter. */
-   } else if (event == EV_READ) {
+        return;
+   }
+   
+   if (event & EV_READ) {
         /* Client socket. */
         fprintf(stdout, "Got new read event on %d\n", fd);
 
@@ -315,7 +319,9 @@ static void handle_event(int fd, short event, void *arg)
         c->towrite = strlen(resp);
         handle_write(c);
         //write(fd, resp, strlen(resp));
-    } else if (event == EV_WRITE) {
+    }
+
+    if (event & EV_WRITE) {
         fprintf(stdout, "Got new write event on %d\n", fd);
      
         handle_write(c);
