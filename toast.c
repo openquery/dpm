@@ -27,12 +27,17 @@
 
 #define BUF_SIZE 1024
 
+/* Test pass-through variables. */
+#define MY_SERVER "127.0.0.1"
+#define MY_PORT 3306
+
 /* MySQL protocol states */
 enum myproto_states {
     my_waiting, /* Waiting for a new request to start */
     my_reading, /* Reading into a packet */
     my_proxy,   /* Write while reading, through end of packet */
     my_process, /* Processing a loaded packet */
+    my_connect, /* Attempting to connect to a remote socket */
 };
 
 /* Structs...
@@ -48,10 +53,15 @@ typedef struct {
     char   *rbuf;
     int    rbufsize;
     int    read; /* bytes of buffer used */
+    int    readto; /* Bytes consumed */
     char   *wbuf;
     int    wbufsize;
     int    written; /* bytes of buffer used */
     int    towrite; /* end bytelength of write buffer. */
+
+    /* Proxy references. */
+    void    *client;
+    void    *backend;
 } conn;
 
 /* Declarations */
@@ -71,6 +81,49 @@ static void run_protocol(conn *c, int read, int written);
 
 static int l_socket = 0; // server socket. duh :P
 static struct lua_State *L; // global lua state.
+
+/* Test outbound connection function */
+static conn *test_outbound()
+{
+    int outsock;
+    conn *c;
+    struct sockaddr_in dest_addr;
+    int flags = 1;
+
+    fprintf(stdout, "Attempting outbound socket request\n");
+
+    outsock = socket(AF_INET, SOCK_STREAM, 0); /* check errors */
+
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(MY_PORT);
+    dest_addr.sin_addr.s_addr = inet_addr(MY_SERVER);
+
+    set_sock_nonblock(outsock); /* check errors */
+
+    memset(&(dest_addr.sin_zero), '\0', 8);
+
+    setsockopt(outsock, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+
+    /* Lets try a nonblocking connect... */
+    if (connect(outsock, (const struct sockaddr *)&dest_addr, sizeof(dest_addr)) == -1) {
+        if (errno != EINPROGRESS) {
+            perror("Outbound socket goofup");
+            exit(-1);
+        }
+    }
+
+    c = init_conn(outsock);
+
+    /* Special state for outbound requests. */
+    c->mystate = my_connect;
+
+    /* We watch for a write to this guy to see if it succeeds */
+    add_conn_event(c, EV_WRITE);
+
+    fprintf(stdout, "Good so far. Outbound sock is init'ed and waiting\n");
+
+    return c;
+}
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
 static void sig_hup(const int sig)
@@ -160,6 +213,11 @@ static int handle_write(conn *c)
 {
     int wbytes;
     int written = 0;
+
+    /* Short circuit for outbound connections. */
+    if (c->towrite < 1) {
+        return written;
+    }
 
     for(;;) {
         /* FIXME: Should we clear the EV_WRITE flag? */
@@ -280,6 +338,9 @@ static conn *init_conn(int newfd)
         return NULL;
     }
 
+    newc->client  = NULL;
+    newc->backend = NULL;
+
     event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
     event_add(&newc->ev, NULL); /* error handling */
 
@@ -292,9 +353,10 @@ static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
     conn *newc;
+    conn *newback;
     int newfd, rbytes, wbytes;
     int flags = 1;
-    char *resp = "Helllllllllooooooooo, nurse!\n";
+    /*char *resp = "Helllllllllooooooooo, nurse!\n";*/
 
     /* if we're the server socket, it's a new conn */
     if (fd == l_socket) {
@@ -304,6 +366,15 @@ static void handle_event(int fd, short event, void *arg)
         set_sock_nonblock(newfd);
         setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
         newc = init_conn(newfd); /* error handling? I guess it doesn't matter. */
+
+        /* For every incoming socket, lets create a backend sock. */
+        newback = test_outbound();
+        newc->backend = newback;
+        /* Weird association. Makes sure the backend can get back to us
+         * clients.
+         * FIXME: This'll need cleaning up code.
+         */
+        newback->client = newc;
         return;
    }
    
@@ -313,17 +384,14 @@ static void handle_event(int fd, short event, void *arg)
 
         rbytes = handle_read(c);
         /* FIXME : Should we do the error handling at this level? Or lower? */
-        if (rbytes < 1) return;
+        if (rbytes < 0) return;
 
-        c->rbuf[rbytes] = '\0';
-        fprintf(stdout, "Read (%d) from client: %s", rbytes, c->rbuf);
-        c->read = 0;
+        fprintf(stdout, "Read (%d) from sock\n", rbytes);
 
-        c->written = 0;
+        /*c->written = 0;
         memcpy(c->wbuf, resp, strlen(resp));
         c->towrite = strlen(resp);
-        wbytes = handle_write(c);
-        //write(fd, resp, strlen(resp));
+        wbytes = handle_write(c);*/
     }
 
     if (event & EV_WRITE) {
@@ -332,7 +400,10 @@ static void handle_event(int fd, short event, void *arg)
         wbytes = handle_write(c);
     }
 
-    run_protocol(c, rbytes, wbytes);
+    /* Socket might be dead by this point... Don't even bother. */
+    if (c) {
+        run_protocol(c, rbytes, wbytes);
+    }
 }
 
 /* MySQL protocol handler...
@@ -350,17 +421,44 @@ static void handle_event(int fd, short event, void *arg)
 static void run_protocol(conn *c, int read, int written)
 {
     int finished = 0;
+    int err = 0;
+    socklen_t errsize = sizeof(err);
+    conn *client;
+    conn *backend;
+
     fprintf(stdout, "Running protocol state machine\n");
 
     while (!finished) {
         switch(c->mystate) {
+        case my_connect:
+            /* Socket was connecting. Lets see if it's good now. */
+            if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errsize) < 0) {
+                perror("Running getsockopt on outbound connect");
+                handle_close(c);
+                break;
+            }
+            if (err != 0) {
+                fprintf(stderr, "Error in connecting outbound socket\n");
+                handle_close(c);
+                break;
+            }
+
+            /* Neat. we're all good. */
+            fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
+            update_conn_event(c, EV_READ | EV_PERSIST);
+            c->mystate = my_waiting;
         case my_waiting:
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
-            if (c->read > 3) {
-                fprintf(stdout, "Got protocol data %d %d %d %d\n", c->rbuf[0], c->rbuf[1], c->rbuf[2], c->rbuf[3]);
-                return;
+            /* FIXME: Badly hacky. Get this 100% proxying! */
+            if (c->read > 0 && c->backend == NULL) {
+                client = (conn *)c->client;
+                memcpy(client->wbuf, c->rbuf + c->readto, c->read - c->readto);
+                c->readto += c->read - c->readto;
+                client->towrite = c->readto;
+                handle_write(client);
             }
+            break;
         }
         finished++;
     }
