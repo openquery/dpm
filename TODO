@@ -8,6 +8,7 @@ DONE ### handle writing data back to socket
 NAH  ### try basic ragel implementation to handle reading/writing commands
 WORK # embed lua; pass input commands to lua, allow callback to set config vars
 WORK ## proper read/write buffering for event sockets.
+outbound connection support. non-block connect()
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 see about implementing mysql protocol (as a server)
 see about working mysql protocol (as a client)

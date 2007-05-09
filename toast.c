@@ -27,10 +27,20 @@
 
 #define BUF_SIZE 1024
 
+/* MySQL protocol states */
+enum myproto_states {
+    my_waiting, /* Waiting for a new request to start */
+    my_reading, /* Reading into a packet */
+    my_proxy,   /* Write while reading, through end of packet */
+    my_process, /* Processing a loaded packet */
+};
+
 /* Structs...
  * FIXME: Header file? */
 typedef struct {
     int    fd;
+    int    mystate;
+
     struct event ev;
     short  ev_flags; /* only way to be able to read current flags? */
 
@@ -55,20 +65,12 @@ static void handle_event(int fd, short event, void *arg);
 static int add_conn_event(conn *c, const int new_flags);
 static int del_conn_event(conn *c, const int new_flags);
 static int update_conn_event(conn *c, const int new_flags);
+static void run_protocol(conn *c, int read, int written);
 
 /* Icky ewwy global vars. */
 
 static int l_socket = 0; // server socket. duh :P
 static struct lua_State *L; // global lua state.
-
-/* MySQL protocol handler...
- * everything starts with 3 byte len, 1 byte seq.
- * can assume read at least 4 bytes before parsing. discover len once have 4
- * bytes. read until len is satisfied.
- * mind special case of > 16MB packets.
- * conn needs states enum for mysql protocol
- * need state machine for dealing with packet once buffered.
- */
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
 static void sig_hup(const int sig)
@@ -97,6 +99,7 @@ static int add_conn_event(conn *c, const int new_flags)
     return ret;
 }
 
+/* FIXME: Logic is wrong */
 static int del_conn_event(conn *c, const int new_flags)
 {
     int ret;
@@ -255,7 +258,8 @@ static conn *init_conn(int newfd)
     newc = (conn *)malloc( sizeof(conn) ); /* error handling */
     newc->fd = newfd;
     newc->ev_flags = EV_READ | EV_PERSIST;
-   
+    newc->mystate = my_waiting;  
+
     /* Set up the buffers. */
     newc->rbuf     = 0;
     newc->wbuf     = 0;
@@ -284,12 +288,12 @@ static conn *init_conn(int newfd)
     return newc;
 }
 
-/* FIXME: CAN BE _BOTH_ EV_READ AND EV_WRITE! */
 static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
     conn *newc;
-    int newfd, rbytes;
+    int newfd, rbytes, wbytes;
+    int flags = 1;
     char *resp = "Helllllllllooooooooo, nurse!\n";
 
     /* if we're the server socket, it's a new conn */
@@ -298,6 +302,7 @@ static void handle_event(int fd, short event, void *arg)
         fprintf(stdout, "Got new client sock %d\n", newfd);
 
         set_sock_nonblock(newfd);
+        setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
         newc = init_conn(newfd); /* error handling? I guess it doesn't matter. */
         return;
    }
@@ -317,14 +322,47 @@ static void handle_event(int fd, short event, void *arg)
         c->written = 0;
         memcpy(c->wbuf, resp, strlen(resp));
         c->towrite = strlen(resp);
-        handle_write(c);
+        wbytes = handle_write(c);
         //write(fd, resp, strlen(resp));
     }
 
     if (event & EV_WRITE) {
         fprintf(stdout, "Got new write event on %d\n", fd);
      
-        handle_write(c);
+        wbytes = handle_write(c);
+    }
+
+    run_protocol(c, rbytes, wbytes);
+}
+
+/* MySQL protocol handler...
+ * everything starts with 3 byte len, 1 byte seq.
+ * can assume read at least 4 bytes before parsing. discover len once have 4
+ * bytes. read until len is satisfied.
+ * mind special case of > 16MB packets.
+ * conn needs states enum for mysql protocol
+ * need state machine for dealing with packet once buffered.
+ */
+
+/* Run the "MySQL" protocol on a socket. Generic state machine logic.
+ * Would've loved to use Ragel, but it doesn't make sense here.
+ */
+static void run_protocol(conn *c, int read, int written)
+{
+    int finished = 0;
+    fprintf(stdout, "Running protocol state machine\n");
+
+    while (!finished) {
+        switch(c->mystate) {
+        case my_waiting:
+            /* When in a waiting state, we need to read four bytes to get
+             * the packet length and packet number. */
+            if (c->read > 3) {
+                fprintf(stdout, "Got protocol data %d %d %d %d\n", c->rbuf[0], c->rbuf[1], c->rbuf[2], c->rbuf[3]);
+                return;
+            }
+        }
+        finished++;
     }
 }
 
@@ -335,6 +373,7 @@ int main (int argc, char **argv)
     struct sigaction sa;
     int flags = 1;
 
+    fprintf(stdout, "Starting up...\n");
     // Initialize the server socket. Nonblock/reuse/etc.
 
     if ( (l_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -386,6 +425,8 @@ int main (int argc, char **argv)
 
     signal(SIGHUP, sig_hup);
 
+    fprintf(stdout, "Initializing Lua...\n");
+
     /* Fire up LUA */
 
     L = lua_open();
@@ -394,6 +435,8 @@ int main (int argc, char **argv)
         fprintf(stderr, "Could not create lua state\n");
         exit(-1);
     }
+
+    fprintf(stdout, "Starting event dispatcher...\n");
 
     event_dispatch();
 
