@@ -16,6 +16,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+/* Help find stupid bugs */
+#include <assert.h>
 
 /* libevent specifics */
 #include <event.h>
@@ -199,6 +201,7 @@ static int handle_accept(int fd)
 /* TODO: Should we handle backend deallocation here? */
 static void handle_close(conn *c)
 {
+    assert(c != NULL);
     event_del(&c->ev);
     close(c->fd);
 
