@@ -25,7 +25,7 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 2048
 
 /* Test pass-through variables. */
 #define MY_SERVER "127.0.0.1"
@@ -44,24 +44,26 @@ enum myproto_states {
  * FIXME: Header file? */
 typedef struct {
     int    fd;
-    int    mystate;
 
     struct event ev;
     short  ev_flags; /* only way to be able to read current flags? */
 
     /* Dynamic boofers */
-    char   *rbuf;
+    unsigned char   *rbuf;
     int    rbufsize;
     int    read; /* bytes of buffer used */
     int    readto; /* Bytes consumed */
-    char   *wbuf;
+    unsigned char   *wbuf;
     int    wbufsize;
     int    written; /* bytes of buffer used */
     int    towrite; /* end bytelength of write buffer. */
 
+    /* mysql protocol specific junk */ 
+    int    mystate;
+    int packetsize;
+
     /* Proxy references. */
-    void    *client;
-    void    *backend;
+    struct conn *remote;
 } conn;
 
 /* Declarations */
@@ -223,6 +225,9 @@ static int handle_write(conn *c)
         /* FIXME: Should we clear the EV_WRITE flag? */
         if (c->written >= c->towrite) {
             fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
+            c->mystate = my_waiting;
+            c->written = 0;
+            update_conn_event(c, EV_READ | EV_PERSIST);
             break;
         }
 
@@ -256,7 +261,7 @@ static int handle_read(conn *c)
 {
     int rbytes;
     int newdata = 0;
-    char *new_rbuf;
+    unsigned char *new_rbuf;
 
     for(;;) {
         /* We're in trouble if read is larger than rbufsize, right? ;) 
@@ -326,8 +331,8 @@ static conn *init_conn(int newfd)
     newc->read     = 0;
     newc->written  = 0;
 
-    newc->rbuf = (char *)malloc( (size_t)newc->rbufsize );
-    newc->wbuf = (char *)malloc( (size_t)newc->wbufsize );
+    newc->rbuf = (unsigned char *)malloc( (size_t)newc->rbufsize );
+    newc->wbuf = (unsigned char *)malloc( (size_t)newc->wbufsize );
 
     /* Cleaner way to do this? I guess not with C */
     if (newc->rbuf == 0 || newc->wbuf == 0) {
@@ -338,8 +343,7 @@ static conn *init_conn(int newfd)
         return NULL;
     }
 
-    newc->client  = NULL;
-    newc->backend = NULL;
+    newc->remote  = NULL;
 
     event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
     event_add(&newc->ev, NULL); /* error handling */
@@ -369,12 +373,12 @@ static void handle_event(int fd, short event, void *arg)
 
         /* For every incoming socket, lets create a backend sock. */
         newback = test_outbound();
-        newc->backend = newback;
+        newc->remote = newback;
         /* Weird association. Makes sure the backend can get back to us
          * clients.
          * FIXME: This'll need cleaning up code.
          */
-        newback->client = newc;
+        newback->remote = newc;
         return;
    }
    
@@ -423,8 +427,7 @@ static void run_protocol(conn *c, int read, int written)
     int finished = 0;
     int err = 0;
     socklen_t errsize = sizeof(err);
-    conn *client;
-    conn *backend;
+    conn *remote;
 
     fprintf(stdout, "Running protocol state machine\n");
 
@@ -450,13 +453,36 @@ static void run_protocol(conn *c, int read, int written)
         case my_waiting:
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
-            /* FIXME: Badly hacky. Get this 100% proxying! */
-            if (c->read > 0 && c->backend == NULL) {
-                client = (conn *)c->client;
-                memcpy(client->wbuf, c->rbuf + c->readto, c->read - c->readto);
-                c->readto += c->read - c->readto;
-                client->towrite = c->readto;
-                handle_write(client);
+            if (c->read > 3) {
+                c->packetsize = (c->rbuf[0]) | (c->rbuf[1] << 8) | (c->rbuf[2] << 16);
+                c->packetsize += 4; /* Add in the original header len */
+
+                fprintf(stdout, "Set to read from %d packet size %u. Seq %d\n", c->fd, c->packetsize, c->rbuf[3]);
+                c->mystate = my_reading;
+            } else if (c->packetsize == 0) {
+                break;
+            }
+            /* Fall through if we're expecting a packet. */
+        case my_reading:
+            /* If we've read the full packet size, we can write it to the
+             * other guy
+             * FIXME: Making assumptions about backend, duh :P
+             */
+            if (c->read >= c->packetsize) {
+                /* We want to copy packetsize to the other socket. Tell it to
+                 * write that shit out.
+                 */
+                remote = (conn *)c->remote;
+                fprintf(stdout, "Finished reading packet from %d! Copy to %d\n", c->fd, remote->fd);
+                /* FIXME: helper function to pre-size buffer */
+                memcpy(remote->wbuf, c->rbuf, c->packetsize);
+                remote->towrite = c->packetsize;
+                handle_write(remote);
+                
+                /* Reset our read buffer for next command. */
+                c->read = 0;
+                c->readto = 0;
+                c->mystate = my_waiting;
             }
             break;
         }
