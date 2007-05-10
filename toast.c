@@ -230,8 +230,6 @@ static int grow_write_buffer(conn *c, int newsize)
 /* handle buffering writes... we're looking for EAGAIN until we stop
  * transmitting.
  * We're assuming the write data was pre-populated.
- * TODO: This means we need another function for ensuring write buffer
- * is the right size?
  * NOTE: Need to support changes in written between calls
  */
 static int handle_write(conn *c)
@@ -380,24 +378,35 @@ static conn *init_conn(int newfd)
 static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
-    conn *newc;
-    conn *newback;
+    conn *newc = NULL;
+    conn *newback = NULL;
     int newfd, rbytes, wbytes;
     int flags = 1;
-    /*char *resp = "Helllllllllooooooooo, nurse!\n";*/
 
     /* if we're the server socket, it's a new conn */
     if (fd == l_socket) {
         newfd = handle_accept(fd); /* error handling */
         fprintf(stdout, "Got new client sock %d\n", newfd);
 
-        set_sock_nonblock(newfd);
+        set_sock_nonblock(newfd); /* error handling on this and below */
         setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
-        newc = init_conn(newfd); /* error handling? I guess it doesn't matter. */
+        newc = init_conn(newfd);
+
+        if (newc == NULL) {
+            return;
+        }
 
         /* For every incoming socket, lets create a backend sock. */
         newback = test_outbound();
+
+        /* If we couldn't get a backend, we must close the client. */
+        if (newback == NULL) {
+            handle_close(newc);
+            return;
+        }
+
         newc->remote = newback;
+
         /* Weird association. Makes sure the backend can get back to us
          * clients.
          * FIXME: This'll need cleaning up code.
