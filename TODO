@@ -11,6 +11,7 @@ WORK ## proper read/write buffering for event sockets.
 WORK # outbound connection support. non-block connect()
 DONE ### Full proxy support; must recognize mysql packets?
 write buffer resizing for large packets.
+test running two connections at once
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 see about implementing mysql protocol (as a server)
 see about working mysql protocol (as a client)
