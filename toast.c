@@ -80,6 +80,7 @@ static int update_conn_event(conn *c, const int new_flags);
 static void run_protocol(conn *c, int read, int written);
 static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
+static int grow_write_buffer(conn *c, int newsize);
 
 /* Icky ewwy global vars. */
 
@@ -204,6 +205,26 @@ static void handle_close(conn *c)
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
+}
+
+/* Generic "Grow my write buffer" function. */
+static int grow_write_buffer(conn *c, int newsize)
+{
+    unsigned char *new_wbuf;
+    if (c->wbufsize < newsize) {
+        fprintf(stdout, "Reallocating write buffer from %d to %d\n", c->wbufsize, c->wbufsize * 2);
+        new_wbuf = realloc(c->wbuf, c->wbufsize * 2);
+
+        if (new_wbuf == NULL) {
+            perror("Realloc output buffer");
+            return -1;
+        }
+
+        c->wbuf = new_wbuf;
+        c->wbufsize *= 2;
+    }
+
+    return 0;
 }
 
 /* handle buffering writes... we're looking for EAGAIN until we stop
@@ -505,6 +526,11 @@ static void run_protocol(conn *c, int read, int written)
                 c->readto += c->packetsize;
             }
             /* Buffered up all pending packet reads. Write out to remote */
+            if (grow_write_buffer(remote, remote->towrite) == -1) {
+                handle_close(remote);
+                handle_close(c);
+                break;
+            }
             handle_write(remote);
 
             /* Any pending packet reads? If so, reset boofer. */

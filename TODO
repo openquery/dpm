@@ -12,6 +12,11 @@ WORK # outbound connection support. non-block connect()
 DONE ### Full proxy support; must recognize mysql packets?
 write buffer resizing for large packets.
 test running two connections at once
+learn to handle large mysql packets (at least identify them, and bomb saying
+they're not supported)
+shuffle functions to be more in order
+move run_protocol and mysql specific 'stuff' to mysql.c
+move con and definition structures to toast.h
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 see about implementing mysql protocol (as a server)
 see about working mysql protocol (as a client)
