@@ -205,6 +205,7 @@ static void handle_close(conn *c)
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
+    c = NULL;
 }
 
 /* Generic "Grow my write buffer" function. */
@@ -526,18 +527,19 @@ static void run_protocol(conn *c, int read, int written)
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
                 fprintf(stdout, "Set to read from %d packet size %u.\n", c->fd, c->packetsize);
-
-                /* FIXME: helper function to pre-size buffer */
+                /* Buffered up all pending packet reads. Write out to remote */
+                if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
+                    handle_close(remote);
+                    handle_close(c);
+                    break;
+                }
                 memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
                 remote->towrite += c->packetsize;
 
                 /* Copied in the packet; advance to next packet. */
                 c->readto += c->packetsize;
             }
-            /* Buffered up all pending packet reads. Write out to remote */
-            if (grow_write_buffer(remote, remote->towrite) == -1) {
-                handle_close(remote);
-                handle_close(c);
+            if (c == NULL) {
                 break;
             }
             handle_write(remote);
