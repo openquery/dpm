@@ -9,7 +9,8 @@ NAH  ### try basic ragel implementation to handle reading/writing commands
 WORK # embed lua; pass input commands to lua, allow callback to set config vars
 WORK ## proper read/write buffering for event sockets.
 WORK # outbound connection support. non-block connect()
-Full proxy support; must recognize mysql packets?
+DONE ### Full proxy support; must recognize mysql packets?
+write buffer resizing for large packets.
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 see about implementing mysql protocol (as a server)
 see about working mysql protocol (as a client)
@@ -19,4 +20,3 @@ memory management; caching connection shit. malloc big range. reuse buffers.
 use multiple .c files to make the program.
 write a makefile
 readv/writev for read/write iovecs? learn how to use scatter/gather
-use iovecs or custom buffer for buffering?

@@ -78,6 +78,8 @@ static int add_conn_event(conn *c, const int new_flags);
 static int del_conn_event(conn *c, const int new_flags);
 static int update_conn_event(conn *c, const int new_flags);
 static void run_protocol(conn *c, int read, int written);
+static int my_next_packet_start(conn *c);
+static void my_consume_header(conn *c);
 
 /* Icky ewwy global vars. */
 
@@ -227,6 +229,7 @@ static int handle_write(conn *c)
             fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
             c->mystate = my_waiting;
             c->written = 0;
+            c->towrite = 0;
             update_conn_event(c, EV_READ | EV_PERSIST);
             break;
         }
@@ -419,6 +422,29 @@ static void handle_event(int fd, short event, void *arg)
  * need state machine for dealing with packet once buffered.
  */
 
+/* Consume the next mysql protocol length + seq header out of the buffer. */
+static void my_consume_header(conn *c)
+{
+    int base = 0;
+    base = c->readto;
+    c->packetsize = (c->rbuf[base]) | (c->rbuf[base + 1] << 8) | (c->rbuf[base + 2] << 16);
+    c->packetsize += 4; /* Add in the original header len */
+}
+
+/* If we're ready to send the next packet along, prep the header and
+ * return the starting position. */
+static int my_next_packet_start(conn *c)
+{
+    if (c->readto == c->read) {
+        return -1;
+    }
+    my_consume_header(c);
+    if (c->read >= c->packetsize) {
+        return c->readto;
+    }
+    return -1;
+}
+
 /* Run the "MySQL" protocol on a socket. Generic state machine logic.
  * Would've loved to use Ragel, but it doesn't make sense here.
  */
@@ -426,8 +452,9 @@ static void run_protocol(conn *c, int read, int written)
 {
     int finished = 0;
     int err = 0;
+    int next_packet;
     socklen_t errsize = sizeof(err);
-    conn *remote;
+    conn *remote = NULL;
 
     fprintf(stdout, "Running protocol state machine\n");
 
@@ -454,10 +481,7 @@ static void run_protocol(conn *c, int read, int written)
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
             if (c->read > 3) {
-                c->packetsize = (c->rbuf[0]) | (c->rbuf[1] << 8) | (c->rbuf[2] << 16);
-                c->packetsize += 4; /* Add in the original header len */
-
-                fprintf(stdout, "Set to read from %d packet size %u. Seq %d\n", c->fd, c->packetsize, c->rbuf[3]);
+                fprintf(stdout, "Looks like we have a packet. Start reading\n");
                 c->mystate = my_reading;
             } else if (c->packetsize == 0) {
                 break;
@@ -466,22 +490,28 @@ static void run_protocol(conn *c, int read, int written)
         case my_reading:
             /* If we've read the full packet size, we can write it to the
              * other guy
-             * FIXME: Making assumptions about backend, duh :P
+             * FIXME: Making assumptions about remote, duh :P
              */
-            if (c->read >= c->packetsize) {
-                /* We want to copy packetsize to the other socket. Tell it to
-                 * write that shit out.
-                 */
-                remote = (conn *)c->remote;
-                fprintf(stdout, "Finished reading packet from %d! Copy to %d\n", c->fd, remote->fd);
+            remote = (conn *)c->remote;
+
+            while ( (next_packet = my_next_packet_start(c)) != -1 ) {
+                fprintf(stdout, "Set to read from %d packet size %u.\n", c->fd, c->packetsize);
+
                 /* FIXME: helper function to pre-size buffer */
-                memcpy(remote->wbuf, c->rbuf, c->packetsize);
-                remote->towrite = c->packetsize;
-                handle_write(remote);
-                
-                /* Reset our read buffer for next command. */
-                c->read = 0;
-                c->readto = 0;
+                memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
+                remote->towrite += c->packetsize;
+
+                /* Copied in the packet; advance to next packet. */
+                c->readto += c->packetsize;
+            }
+            /* Buffered up all pending packet reads. Write out to remote */
+            handle_write(remote);
+
+            /* Any pending packet reads? If so, reset boofer. */
+            if (c->readto == c->read) {
+                fprintf(stdout, "Resetting read buffer\n");
+                c->read    = 0;
+                c->readto  = 0;
                 c->mystate = my_waiting;
             }
             break;
