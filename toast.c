@@ -196,6 +196,7 @@ static int handle_accept(int fd)
     return newfd;
 }
 
+/* TODO: Should we handle backend deallocation here? */
 static void handle_close(conn *c)
 {
     event_del(&c->ev);
@@ -244,7 +245,6 @@ static int handle_write(conn *c)
     }
 
     for(;;) {
-        /* FIXME: Should we clear the EV_WRITE flag? */
         if (c->written >= c->towrite) {
             fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
             c->mystate = my_waiting;
@@ -298,7 +298,6 @@ static int handle_read(conn *c)
 
             if (new_rbuf == NULL) {
                 perror("Realloc input buffer");
-                /* FIXME: Should tell user we're abanonding ship. */
                 handle_close(c);
                 return -1;
             }
