@@ -12,6 +12,8 @@ DONE ### outbound connection support. non-block connect()
 DONE ### Full proxy support; must recognize mysql packets?
 DONE ### write buffer resizing for large packets.
 DONE ### (fixed some nice bugs) test running two connections at once
+if buffer grows too big, shrink it after completing a write/read
+learn about the authentication packets. print out the known data.
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
 shuffle functions to be more in order

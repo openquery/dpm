@@ -196,7 +196,6 @@ static int handle_accept(int fd)
     return newfd;
 }
 
-/* TODO: Should we handle backend deallocation here? */
 static void handle_close(conn *c)
 {
     conn *remote;
