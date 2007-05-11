@@ -11,7 +11,7 @@ DONE ### proper read/write buffering for event sockets.
 DONE ### outbound connection support. non-block connect()
 DONE ### Full proxy support; must recognize mysql packets?
 DONE ### write buffer resizing for large packets.
-test running two connections at once
+DONE ### (fixed some nice bugs) test running two connections at once
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
 shuffle functions to be more in order
@@ -21,7 +21,7 @@ look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 see about implementing mysql protocol (as a server)
 see about working mysql protocol (as a client)
 (how much can be done in lua? perhaps?)
-more libevent infrastructure; timers, buffering
+more libevent infrastructure; timers
 memory management; caching connection shit. malloc big range. reuse buffers.
 use multiple .c files to make the program.
 write a makefile

@@ -34,11 +34,9 @@
 #define MY_PORT 3306
 
 /* MySQL protocol states */
-enum myproto_states {
+enum myconn_states {
     my_waiting, /* Waiting for a new request to start */
     my_reading, /* Reading into a packet */
-    my_proxy,   /* Write while reading, through end of packet */
-    my_process, /* Processing a loaded packet */
     my_connect, /* Attempting to connect to a remote socket */
 };
 
