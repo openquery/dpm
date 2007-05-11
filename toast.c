@@ -201,11 +201,18 @@ static int handle_accept(int fd)
 /* TODO: Should we handle backend deallocation here? */
 static void handle_close(conn *c)
 {
+    conn *remote;
     assert(c != NULL);
     event_del(&c->ev);
-    close(c->fd);
 
-    fprintf(stdout, "Closed connection for %d\n", c->fd);
+    if (c->remote) {
+        remote = (conn *)c->remote;
+        remote->remote = NULL;
+        handle_close(remote);
+    }
+
+    close(c->fd);
+    fprintf(stdout, "Closed connection for %u\n", c->fd);
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
@@ -355,6 +362,8 @@ static conn *init_conn(int newfd)
     newc->wbufsize = BUF_SIZE;
     newc->read     = 0;
     newc->written  = 0;
+    newc->readto   = 0;
+    newc->towrite  = 0;
 
     newc->rbuf = (unsigned char *)malloc( (size_t)newc->rbufsize );
     newc->wbuf = (unsigned char *)malloc( (size_t)newc->wbufsize );
@@ -436,8 +445,9 @@ static void handle_event(int fd, short event, void *arg)
 
     if (event & EV_WRITE) {
         fprintf(stdout, "Got new write event on %d\n", fd);
-     
-        wbytes = handle_write(c);
+        if (c->mystate != my_connect) {
+          wbytes = handle_write(c);
+        }
     }
 
     /* Socket might be dead by this point... Don't even bother. */
@@ -531,7 +541,6 @@ static void run_protocol(conn *c, int read, int written)
                 fprintf(stdout, "Set to read from %d packet size %u.\n", c->fd, c->packetsize);
                 /* Buffered up all pending packet reads. Write out to remote */
                 if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
-                    handle_close(remote);
                     handle_close(c);
                     break;
                 }
