@@ -125,16 +125,17 @@ int set_sock_nonblock(int fd);
 static int handle_accept(int fd);
 static void handle_close(conn *c);
 static int handle_read(conn *c);
+static int handle_write(conn *c);
 static conn *init_conn(int newfd);
 static void handle_event(int fd, short event, void *arg);
 static int add_conn_event(conn *c, const int new_flags);
 static int del_conn_event(conn *c, const int new_flags);
 static int update_conn_event(conn *c, const int new_flags);
-static void run_protocol(conn *c, int read, int written);
+static int run_protocol(conn *c, int read, int written);
 static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
-static void run_packet_protocol(conn *c);
+static int run_packet_protocol(conn *c);
 static int my_consume_auth_packet(conn *c);
 static int my_consume_ok_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
@@ -321,16 +322,14 @@ static int handle_write(conn *c)
         wbytes = send(c->fd, c->wbuf + c->written, c->towrite - c->written, 0);
 
         if (wbytes == 0) {
-            handle_close(c);
             return -1;
         } else if (wbytes == -1 ) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 if (add_conn_event(c, EV_WRITE) == 0) {
                     fprintf(stderr, "Couldn't add write watch to %d", c->fd);
-                    handle_close(c);
+                    return -1;
                 }
             } else {
-                handle_close(c);
                 return -1;
             }
         }
@@ -362,7 +361,6 @@ static int handle_read(conn *c)
 
             if (new_rbuf == NULL) {
                 perror("Realloc input buffer");
-                handle_close(c);
                 return -1;
             }
 
@@ -377,13 +375,11 @@ static int handle_read(conn *c)
         /* If signaled for reading and got zero bytes, close it up 
          * FIXME : Should we flush the command? */
         if (rbytes == 0) {
-            handle_close(c);
             return -1;
         } else if (rbytes == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             } else {
-                handle_close(c);
                 return -1;
             }
         }
@@ -450,6 +446,7 @@ static void handle_event(int fd, short event, void *arg)
     conn *newback = NULL;
     int newfd, rbytes, wbytes;
     int flags = 1;
+    int err   = 0;
 
     /* if we're the server socket, it's a new conn */
     if (fd == l_socket) {
@@ -492,26 +489,29 @@ static void handle_event(int fd, short event, void *arg)
 
         rbytes = handle_read(c);
         /* FIXME : Should we do the error handling at this level? Or lower? */
-        if (rbytes < 0) return;
+        if (rbytes < 0) {
+            handle_close(c);
+            return;
+        }
 
         //fprintf(stdout, "Read (%d) from sock\n", rbytes);
-
-        /*c->written = 0;
-        memcpy(c->wbuf, resp, strlen(resp));
-        c->towrite = strlen(resp);
-        wbytes = handle_write(c);*/
     }
 
     if (event & EV_WRITE) {
         fprintf(stdout, "Got new write event on %d\n", fd);
         if (c->mystate != my_connect) {
           wbytes = handle_write(c);
+
+          if (wbytes < 0) {
+              handle_close(c);
+              return;
+          }
         }
     }
 
-    /* Socket might be dead by this point... Don't even bother. */
-    if (c) {
-        run_protocol(c, rbytes, wbytes);
+    err = run_protocol(c, rbytes, wbytes);
+    if (err == -1) {
+        handle_close(c);
     }
 }
 
@@ -778,7 +778,7 @@ static int my_consume_ok_packet(conn *c)
  * proxied. ie: State 'myc_wait_handshake' should transition to
  * 'myc_sending_auth_return' or somesuch, before its next packet.
  */
-static void run_packet_protocol(conn *c)
+static int run_packet_protocol(conn *c)
 {
     int ret = 0;
 
@@ -819,14 +819,16 @@ static void run_packet_protocol(conn *c)
     /* Boo boo in parsing packet. */
     if (ret == -1) {
         fprintf(stderr, "Could not parse packet, state: %d\n", c->mypstate);
-        handle_close(c);
+        return -1;
     }
+
+    return 0;
 }
 
 /* Run the "MySQL" protocol on a socket. Generic state machine logic.
  * Would've loved to use Ragel, but it doesn't make sense here.
  */
-static void run_protocol(conn *c, int read, int written)
+static int run_protocol(conn *c, int read, int written)
 {
     int finished = 0;
     int err = 0;
@@ -842,13 +844,11 @@ static void run_protocol(conn *c, int read, int written)
             /* Socket was connecting. Lets see if it's good now. */
             if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errsize) < 0) {
                 perror("Running getsockopt on outbound connect");
-                handle_close(c);
-                break;
+                return -1;
             }
             if (err != 0) {
                 fprintf(stderr, "Error in connecting outbound socket\n");
-                handle_close(c);
-                break;
+                return -1;
             }
 
             /* Neat. we're all good. */
@@ -877,11 +877,11 @@ static void run_protocol(conn *c, int read, int written)
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
                 //fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
                 /* Drive the packet state machine. */
-                run_packet_protocol(c);
+                err = run_packet_protocol(c);
+                if (err == -1) return -1;
                 /* Buffered up all pending packet reads. Write out to remote */
                 if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
-                    handle_close(c);
-                    break;
+                    return -1;
                 }
                 memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
                 remote->towrite += c->packetsize;
@@ -892,7 +892,8 @@ static void run_protocol(conn *c, int read, int written)
             if (c == NULL) {
                 break;
             }
-            handle_write(remote);
+            err = handle_write(remote);
+            if (err == -1) return -1;
 
             /* Any pending packet reads? If so, reset boofer. */
             if (c->readto == c->read) {
@@ -905,6 +906,8 @@ static void run_protocol(conn *c, int read, int written)
         }
         finished++;
     }
+
+    return 0;
 }
 
 int main (int argc, char **argv)
