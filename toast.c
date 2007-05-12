@@ -92,8 +92,19 @@ struct my_handshake_packet {
     uint16_t       server_capabilities;
     uint8_t        server_language;
     uint16_t       server_status;
-    unsigned char  filler2[12]; /* Should always be 0x00 */
-    unsigned char  scramble_buff2[12]; /* nooooo clue */
+    unsigned char  filler2[13]; /* Should always be 0x00 */
+    unsigned char  scramble_buff2[13]; /* nooooo clue */
+};
+
+struct my_auth_packet {
+    uint32_t       client_flags;
+    uint32_t       max_packet_size;
+    uint8_t        charset_number;
+    unsigned char  filler[23];
+    char          *user;
+    unsigned char  scramble_buff[21];
+    uint8_t        filler2;
+    char          *databasename;
 };
 
 /* Declarations */
@@ -112,6 +123,7 @@ static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
 static void run_packet_protocol(conn *c);
+static int my_consume_auth_packet(conn *c);
 
 /* Icky ewwy global vars. */
 
@@ -284,7 +296,7 @@ static int handle_write(conn *c)
 
     for(;;) {
         if (c->written >= c->towrite) {
-            fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
+            //fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
             c->mystate = my_waiting;
             c->written = 0;
             c->towrite = 0;
@@ -468,7 +480,7 @@ static void handle_event(int fd, short event, void *arg)
         /* FIXME : Should we do the error handling at this level? Or lower? */
         if (rbytes < 0) return;
 
-        fprintf(stdout, "Read (%d) from sock\n", rbytes);
+        //fprintf(stdout, "Read (%d) from sock\n", rbytes);
 
         /*c->written = 0;
         memcpy(c->wbuf, resp, strlen(resp));
@@ -523,6 +535,7 @@ static void my_consume_header(conn *c)
 
 /* FIXME: If we have the second scramblebuff, it needs to be assembled
  * into a single line for processing.
+ * FIXME: Server can send 0xFF as protocol if there was an error.
  */
 static int my_consume_handshake_packet(conn *c)
 {
@@ -590,7 +603,73 @@ static int my_consume_handshake_packet(conn *c)
     memcpy(&p.scramble_buff2, &c->rbuf[base], 13);
     base += 13;
 
-    fprintf(stdout, "Handshake packet: %x\n%s\n%x\n%x\n%x\n", p.protocol_version, p.server_version, p.thread_id, p.filler1, p.server_capabilities);
+    fprintf(stdout, "***PACKET*** Handshake packet: %x\n%s\n%x\n%x\n%x\n", p.protocol_version, p.server_version, p.thread_id, p.filler1, p.server_capabilities);
+
+    return 0;
+}
+
+static int my_consume_auth_packet(conn *c)
+{
+    struct my_auth_packet p;
+    int base = c->readto + 4;
+    size_t my_size = 0;
+
+    /* Clear out the struct. */
+    memset(&p, 0, sizeof(struct my_auth_packet));
+
+    /* Client flags. Same as server_flags with some crap added/removed.
+     * at this point in packet processing we should take out unsupported
+     * options.
+     */
+    memcpy(&p.client_flags, &c->rbuf[base], 4);
+    base += 4;
+
+    /* Should we short circuit this to something more reasonable for latency?
+     */
+    memcpy(&p.max_packet_size, &c->rbuf[base], 4);
+    base += 4;
+
+    p.charset_number = c->rbuf[base];
+    base++;
+
+    /* Skip the filler crap. */
+    base += 23;
+
+    /* Supplied username. */
+    /* FIXME: This string reading crap should be a helper function. */
+    my_size = strlen((const char *)&c->rbuf[base]);
+    p.user = (char *)malloc( my_size );
+
+    if (p.user == 0) {
+        perror("Could not malloc()");
+        return -1;
+    }
+    memcpy(p.user, &c->rbuf[base], my_size);
+    /* +1 to account for the \0 */
+    base += my_size + 1;
+
+    /* "Length coded binary" my ass. */
+    /* If we don't have one, leave it all zeroes. */
+    if (c->rbuf[base] > 0) {
+        memcpy(&p.scramble_buff, &c->rbuf[base], 21);
+        base += 21;
+    } else {
+        /* I guess this "filler" is only here if there's no scramble. */
+        base++;
+    }
+
+    my_size = strlen((const char *)&c->rbuf[base]);
+    p.databasename = (char *)malloc( my_size );
+
+    if (p.databasename == 0) {
+        perror("Could not malloc()");
+        return -1;
+    }
+    memcpy(p.databasename, &c->rbuf[base], my_size);
+    /* +1 to account for the \0 */
+    base += my_size + 1;
+
+    fprintf(stdout, "***PACKET*** Client auth packet: %x\n%u\n%x\n%s\n%s\n", p.client_flags, p.max_packet_size, p.charset_number, p.user, p.databasename);
 
     return 0;
 }
@@ -603,7 +682,9 @@ static int my_consume_handshake_packet(conn *c)
 /* Notes for packet state changes:
  * client/server states should be advanced as packets are routed to them.
  * currently there's no mechanism for knowing this since they are directly
- * proxied. */
+ * proxied. ie: State 'myc_wait_handshake' should transition to
+ * 'myc_sending_auth_return' or somesuch, before its next packet.
+ */
 static void run_packet_protocol(conn *c)
 {
     int ret = 0;
@@ -612,6 +693,8 @@ static void run_packet_protocol(conn *c)
     case my_client:
         switch (c->mypstate) {
         case myc_wait_handshake:
+            ret = my_consume_auth_packet(c);
+            c->mypstate = myc_wait_auth_return;
             break;
         }
         break;
@@ -670,7 +753,7 @@ static void run_protocol(conn *c, int read, int written)
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
             if (c->read > 3) {
-                fprintf(stdout, "Looks like we have a packet. Start reading\n");
+                //fprintf(stdout, "Looks like we have a packet. Start reading\n");
                 c->mystate = my_reading;
             } else if (c->packetsize == 0) {
                 break;
@@ -684,7 +767,7 @@ static void run_protocol(conn *c, int read, int written)
             remote = (conn *)c->remote;
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-                fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
+                //fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
                 /* Drive the packet state machine. */
                 run_packet_protocol(c);
                 /* Buffered up all pending packet reads. Write out to remote */
