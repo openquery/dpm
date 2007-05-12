@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
 /* Help find stupid bugs */
 #include <assert.h>
 
@@ -40,6 +41,20 @@ enum myconn_states {
     my_connect, /* Attempting to connect to a remote socket */
 };
 
+enum myproto_states {
+    mys_connect,
+    myc_connect,
+    mys_sent_handshake,
+    myc_wait_handshake,
+    mys_sent_auth_return,
+    myc_wait_auth_return,
+};
+
+enum my_types {
+    my_server, /* This conn is a server connection */
+    my_client, /* This conn is a client connection */
+};
+
 /* Structs...
  * FIXME: Header file? */
 typedef struct {
@@ -59,12 +74,27 @@ typedef struct {
     int    towrite; /* end bytelength of write buffer. */
 
     /* mysql protocol specific junk */ 
-    int    mystate;
-    int packetsize;
+    int    mystate;  /* Connection state */
+    int    mypstate; /* Packet state */
+    uint8_t my_type; /* Type of *remote* end of this connection */
+    int    packetsize;
 
     /* Proxy references. */
     struct conn *remote;
 } conn;
+
+struct my_handshake_packet {
+    uint8_t        protocol_version;
+    char *server_version;
+    uint32_t       thread_id;
+    uint64_t       scramble_buff;
+    uint8_t        filler1; /* Should always be 0x00 */
+    uint16_t       server_capabilities;
+    uint8_t        server_language;
+    uint16_t       server_status;
+    unsigned char *filler2; /* Should always be 0x00 */
+    unsigned char *scramble_buff2;
+};
 
 /* Declarations */
 static void sig_hup(const int sig);
@@ -81,6 +111,7 @@ static void run_protocol(conn *c, int read, int written);
 static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
+static void run_packet_protocol(conn *c);
 
 /* Icky ewwy global vars. */
 
@@ -199,7 +230,7 @@ static int handle_accept(int fd)
 static void handle_close(conn *c)
 {
     conn *remote;
-    assert(c != NULL);
+    assert(c != 0);
     event_del(&c->ev);
 
     if (c->remote) {
@@ -213,7 +244,7 @@ static void handle_close(conn *c)
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
-    c = NULL;
+    c = 0;
 }
 
 /* Generic "Grow my write buffer" function. */
@@ -350,7 +381,9 @@ static conn *init_conn(int newfd)
     newc = (conn *)malloc( sizeof(conn) ); /* error handling */
     newc->fd = newfd;
     newc->ev_flags = EV_READ | EV_PERSIST;
-    newc->mystate = my_waiting;  
+    newc->mystate = my_waiting;
+    newc->mypstate = my_waiting;
+    newc->my_type = 0;
 
     /* Set up the buffers. */
     newc->rbuf     = 0;
@@ -421,6 +454,9 @@ static void handle_event(int fd, short event, void *arg)
          * FIXME: This'll need cleaning up code.
          */
         newback->remote = newc;
+
+        newc->mypstate  = myc_wait_handshake;
+        newc->my_type   = my_client;
         return;
    }
    
@@ -462,15 +498,6 @@ static void handle_event(int fd, short event, void *arg)
  * need state machine for dealing with packet once buffered.
  */
 
-/* Consume the next mysql protocol length + seq header out of the buffer. */
-static void my_consume_header(conn *c)
-{
-    int base = 0;
-    base = c->readto;
-    c->packetsize = (c->rbuf[base]) | (c->rbuf[base + 1] << 8) | (c->rbuf[base + 2] << 16);
-    c->packetsize += 4; /* Add in the original header len */
-}
-
 /* If we're ready to send the next packet along, prep the header and
  * return the starting position. */
 static int my_next_packet_start(conn *c)
@@ -483,6 +510,78 @@ static int my_next_packet_start(conn *c)
         return c->readto;
     }
     return -1;
+}
+
+/* Consume the next mysql protocol length + seq header out of the buffer. */
+static void my_consume_header(conn *c)
+{
+    int base = 0;
+    base = c->readto;
+    c->packetsize = (c->rbuf[base]) | (c->rbuf[base + 1] << 8) | (c->rbuf[base + 2] << 16);
+    c->packetsize += 4; /* Add in the original header len */
+}
+
+static int my_consume_handshake_packet(conn *c)
+{
+    struct my_handshake_packet p;
+    int base = c->readto + 4;
+    size_t my_size = 0;
+
+    /* Clear out the struct. */
+    memset(&p, 0, sizeof(struct my_handshake_packet));
+    
+    p.protocol_version = c->rbuf[base];
+    if (p.protocol_version != 10) {
+        fprintf(stderr, "We only support protocol version 10! Closing.\n");
+        return -1;
+    }
+
+    base++;
+    my_size = strlen((const char *)&c->rbuf[base]);
+    p.server_version = (char *)malloc( my_size );
+
+    if (p.server_version == 0) {
+        perror("Could not malloc()");
+        return -1;
+    }
+    memcpy(&p.server_version, &c->rbuf[base], my_size);
+    base += my_size;
+
+    memcpy(&p.thread_id, (uint32_t *)&c->rbuf[base], 4);
+
+    /* FIXME: I'm not doing this pointer stuff right, am I? */
+    fprintf(stdout, "Handshake packet: %u\n%s\n%u\n", p.protocol_version, (char *)&p.server_version, p.thread_id);
+
+    return 0;
+}
+
+/* Run the packet level MySQL protocol.
+ * TODO: Currently this is just used to identify the packets and mark state
+ * changes. Doesn't do anything useful ;)
+ * Only call this when there's a full packet waiting.
+ */
+static void run_packet_protocol(conn *c)
+{
+    int ret = 0;
+
+    switch (c->my_type) {
+    case my_client:
+        break;
+    case my_server:
+        switch (c->mypstate) {
+        case mys_connect:
+            /* Should be a handshake packet. */
+            ret = my_consume_handshake_packet(c);
+            c->mypstate = mys_sent_handshake;
+            break;
+        }
+        break;
+    }
+
+    /* Boo boo in parsing packet. */
+    if (ret == -1) {
+        handle_close(c);
+    }
 }
 
 /* Run the "MySQL" protocol on a socket. Generic state machine logic.
@@ -499,7 +598,7 @@ static void run_protocol(conn *c, int read, int written)
     fprintf(stdout, "Running protocol state machine\n");
 
     while (!finished) {
-        switch(c->mystate) {
+        switch (c->mystate) {
         case my_connect:
             /* Socket was connecting. Lets see if it's good now. */
             if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errsize) < 0) {
@@ -516,7 +615,9 @@ static void run_protocol(conn *c, int read, int written)
             /* Neat. we're all good. */
             fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
             update_conn_event(c, EV_READ | EV_PERSIST);
-            c->mystate = my_waiting;
+            c->mystate  = my_waiting;
+            c->mypstate = mys_connect;
+            c->my_type  = my_server;
         case my_waiting:
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
@@ -535,7 +636,9 @@ static void run_protocol(conn *c, int read, int written)
             remote = (conn *)c->remote;
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-                fprintf(stdout, "Set to read from %d packet size %u.\n", c->fd, c->packetsize);
+                fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
+                /* Drive the packet state machine. */
+                run_packet_protocol(c);
                 /* Buffered up all pending packet reads. Write out to remote */
                 if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
                     handle_close(c);
