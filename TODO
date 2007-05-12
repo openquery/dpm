@@ -1,5 +1,25 @@
 PRACTICE:
 
+write helper routines to serialize/deserialize length coded binaries
+write helper routines to read/write null terminated strings into a struct
+write helper routines to read/write length encoded strings?
+figure out how to free if (ptr == NULL) { don'tfree } correctly
+if buffer grows too big, shrink it after completing a write/read
+learn about all basic packet types
+redo packet state machine to do proper state transitions when packets are
+_sent_ to a remote host.
+intercept and set flags properly for compression/prepare support disabling
+implement mysql's password crypto handshake
+learn to handle large mysql packets (at least identify them, and bomb saying
+they're not supported)
+shuffle functions to be more in order
+move run_protocol and mysql specific 'stuff' to mysql.c
+move con and definition structures to toast.h
+look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
+more libevent infrastructure; timers
+memory management; caching connection shit. malloc big range. reuse buffers.
+use multiple .c files to make the program.
+write a makefile
 DONE ### set libevent to listen on socket with callback, accept sockets.
 DONE ### signal ignore sigpipe
 DONE ### handle reading data on socket, printing locally.
@@ -12,21 +32,4 @@ DONE ### outbound connection support. non-block connect()
 DONE ### Full proxy support; must recognize mysql packets?
 DONE ### write buffer resizing for large packets.
 DONE ### (fixed some nice bugs) test running two connections at once
-figure out how to free if (ptr == NULL) { don'tfree } correctly
-if buffer grows too big, shrink it after completing a write/read
 DONE ### learn about the authentication packets. print out the known data.
-implement mysql's password crypto handshake
-learn to handle large mysql packets (at least identify them, and bomb saying
-they're not supported)
-shuffle functions to be more in order
-move run_protocol and mysql specific 'stuff' to mysql.c
-move con and definition structures to toast.h
-look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
-see about implementing mysql protocol (as a server)
-see about working mysql protocol (as a client)
-(how much can be done in lua? perhaps?)
-more libevent infrastructure; timers
-memory management; caching connection shit. malloc big range. reuse buffers.
-use multiple .c files to make the program.
-write a makefile
-readv/writev for read/write iovecs? learn how to use scatter/gather

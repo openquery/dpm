@@ -48,6 +48,8 @@ enum myproto_states {
     myc_wait_handshake,
     mys_sent_auth_return,
     myc_wait_auth_return,
+    myc_waiting, /* Waiting to send a command. */
+    mys_waiting, /* Waiting to receive a command. */
 };
 
 enum my_types {
@@ -107,6 +109,16 @@ struct my_auth_packet {
     char          *databasename;
 };
 
+struct my_ok_packet {
+    uint8_t        field_count; /* Always zero to identify packet. */
+    uint64_t       affected_rows; /* 1-9 byte encoded length. */
+    uint64_t       insert_id; /* 1-9 byte encoded insert id. */
+    uint16_t       server_status; /* 16 bit flags I think? */
+    uint16_t       warning_count; /* 16 bit numeric for number of warnings? */
+    char          *message; /* length encoded string of warnings. */
+    uint64_t       message_len; /* Length of the above string. */
+};
+
 /* Declarations */
 static void sig_hup(const int sig);
 int set_sock_nonblock(int fd);
@@ -124,6 +136,8 @@ static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
 static void run_packet_protocol(conn *c);
 static int my_consume_auth_packet(conn *c);
+static int my_consume_ok_packet(conn *c);
+static uint64_t my_read_binary_field(unsigned char *buf, int *base);
 
 /* Icky ewwy global vars. */
 
@@ -510,6 +524,39 @@ static void handle_event(int fd, short event, void *arg)
  * need state machine for dealing with packet once buffered.
  */
 
+/* Read a length encoded binary field into a uint64_t */
+static uint64_t my_read_binary_field(unsigned char *buf, int *base)
+{
+    uint64_t ret = 0;
+
+    if (buf[*base] < 251) {
+        (*base)++;
+        return (uint64_t) buf[*base];
+    }
+
+    (*base)++;
+    switch (buf[*base]) {
+        case 251:
+            /* FIXME: Handling NULL case correctly? */
+            (*base)++;
+            return (uint64_t) ~0;
+        case 252:
+            memcpy(&ret, &buf[*base], 2);
+            (*base) += 2;
+            break;
+        case 253:
+            /* NOTE: Docs say this is 32-bit. libmysqlnd says 24-bit? */
+            memcpy(&ret, &buf[*base], 4);
+            (*base) += 4;
+            break;
+        case 254:
+            memcpy(&ret, &buf[*base], 8);
+            (*base) += 8;
+    }
+
+    return ret;
+}
+
 /* If we're ready to send the next packet along, prep the header and
  * return the starting position. */
 static int my_next_packet_start(conn *c)
@@ -542,6 +589,8 @@ static int my_consume_handshake_packet(conn *c)
     struct my_handshake_packet p;
     int base = c->readto + 4;
     size_t my_size = 0;
+
+    fprintf(stdout, "***PACKET*** parsing handshake packet.\n");
 
     /* Clear out the struct. */
     memset(&p, 0, sizeof(struct my_handshake_packet));
@@ -618,6 +667,8 @@ static int my_consume_auth_packet(conn *c)
     int base = c->readto + 4;
     size_t my_size = 0;
 
+    fprintf(stdout, "***PACKET*** parsing auth packet.\n");
+
     /* Clear out the struct. */
     memset(&p, 0, sizeof(struct my_auth_packet));
 
@@ -678,6 +729,44 @@ static int my_consume_auth_packet(conn *c)
     return 0;
 }
 
+static int my_consume_ok_packet(conn *c)
+{
+    struct my_ok_packet p;
+    int base = c->readto + 4;
+    uint64_t my_size = 0;
+
+    fprintf(stdout, "***PACKET*** parsing ok packet.\n");
+
+    /* Clear out the struct. */
+    memset(&p, 0, sizeof(struct my_ok_packet));
+
+    p.affected_rows = my_read_binary_field(c->rbuf, &base);
+
+    p.insert_id = my_read_binary_field(c->rbuf, &base);
+
+    memcpy(&p.server_status, &c->rbuf[base], 2);
+    base += 2;
+
+    memcpy(&p.warning_count, &c->rbuf[base], 2);
+    base += 2;
+
+    if (c->packetsize > base - c->readto && (my_size = my_read_binary_field(c->rbuf, &base))) {
+        p.message = (char *)malloc( my_size );
+        if (p.message == 0) {
+            perror("Could not malloc()");
+            return -1;
+        }
+        p.message_len = my_size;
+        memcpy(p.message, &c->rbuf[base], my_size);
+    } else {
+        p.message = NULL;
+    }
+
+    fprintf(stdout, "***PACKET*** Server OK packet: %x\n%llu\n%llu\n%u\n%u\n%s\n", p.field_count, (unsigned long long)p.affected_rows, (unsigned long long)p.insert_id, p.server_status, p.warning_count, p.message_len ? p.message : '\0');
+
+    return 0;
+}
+
 /* Run the packet level MySQL protocol.
  * TODO: Currently this is just used to identify the packets and mark state
  * changes. Doesn't do anything useful ;)
@@ -698,8 +787,7 @@ static void run_packet_protocol(conn *c)
         switch (c->mypstate) {
         case myc_wait_handshake:
             ret = my_consume_auth_packet(c);
-            c->mypstate = myc_wait_auth_return;
-            break;
+            c->mypstate = myc_waiting;
         }
         break;
     case my_server:
@@ -709,12 +797,28 @@ static void run_packet_protocol(conn *c)
             ret = my_consume_handshake_packet(c);
             c->mypstate = mys_sent_handshake;
             break;
+        case mys_sent_handshake:
+            /* In direct proxy mode, should've received an auth packet.
+             * this'll be an OK or ERR packet
+             */
+            switch (c->rbuf[c->readto + 4]) {
+            /* TODO: Add spifty flags for identifying packets. */
+            case 0:
+                ret = my_consume_ok_packet(c);
+                c->mypstate = mys_waiting;
+                break;
+            case 0xFE:
+                /*ret = my_consume_err_packet(c);
+                c->mypstate = mys_waiting;*/
+                break;
+            }
         }
         break;
     }
 
     /* Boo boo in parsing packet. */
     if (ret == -1) {
+        fprintf(stderr, "Could not parse packet, state: %d\n", c->mypstate);
         handle_close(c);
     }
 }
@@ -792,7 +896,7 @@ static void run_protocol(conn *c, int read, int written)
 
             /* Any pending packet reads? If so, reset boofer. */
             if (c->readto == c->read) {
-                fprintf(stdout, "Resetting read buffer\n");
+                //fprintf(stdout, "Resetting read buffer\n");
                 c->read    = 0;
                 c->readto  = 0;
                 c->mystate = my_waiting;
