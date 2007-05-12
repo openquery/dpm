@@ -92,8 +92,8 @@ struct my_handshake_packet {
     uint16_t       server_capabilities;
     uint8_t        server_language;
     uint16_t       server_status;
-    unsigned char *filler2; /* Should always be 0x00 */
-    unsigned char *scramble_buff2;
+    unsigned char  filler2[12]; /* Should always be 0x00 */
+    unsigned char  scramble_buff2[12]; /* nooooo clue */
 };
 
 /* Declarations */
@@ -521,6 +521,9 @@ static void my_consume_header(conn *c)
     c->packetsize += 4; /* Add in the original header len */
 }
 
+/* FIXME: If we have the second scramblebuff, it needs to be assembled
+ * into a single line for processing.
+ */
 static int my_consume_handshake_packet(conn *c)
 {
     struct my_handshake_packet p;
@@ -529,7 +532,8 @@ static int my_consume_handshake_packet(conn *c)
 
     /* Clear out the struct. */
     memset(&p, 0, sizeof(struct my_handshake_packet));
-    
+   
+    /* We only support protocol 10 right now... */
     p.protocol_version = c->rbuf[base];
     if (p.protocol_version != 10) {
         fprintf(stderr, "We only support protocol version 10! Closing.\n");
@@ -537,6 +541,8 @@ static int my_consume_handshake_packet(conn *c)
     }
 
     base++;
+
+    /* Server version string. Crappy malloc. */
     my_size = strlen((const char *)&c->rbuf[base]);
     p.server_version = (char *)malloc( my_size );
 
@@ -545,11 +551,46 @@ static int my_consume_handshake_packet(conn *c)
         return -1;
     }
     memcpy(p.server_version, &c->rbuf[base], my_size);
-    base += my_size;
+    /* +1 to account for the \0 */
+    base += my_size + 1;
 
-    memcpy(&p.thread_id, (uint32_t *)&c->rbuf[base], 4);
+    /* TODO: I think technically I can do this with one memcpy. */
 
-    fprintf(stdout, "Handshake packet: %u\n%s\n%u\n", p.protocol_version, p.server_version, p.thread_id);
+    /* 4 byte thread id */
+    memcpy(&p.thread_id, &c->rbuf[base], 4);
+    base += 4;
+
+    /* 64-bit scramble buff? or 8 byte char? :P Docs don't say. */
+    memcpy(&p.scramble_buff, &c->rbuf[base], 8);
+    base += 8;
+
+    /* Should be 0 */
+    p.filler1 = c->rbuf[base];
+    base++;
+
+    /* Set of flags for server caps. */
+    /* TODO: Need to explicitly disable compression, ssl, other features we
+     * don't support. */
+    memcpy(&p.server_capabilities, &c->rbuf[base], 2);
+    base += 2;
+
+    /* Language setting. Pass-through and/or ignore. */
+    p.server_language = c->rbuf[base];
+    base++;
+
+    /* Server status flags. AUTOCOMMIT flags and such? */
+    memcpy(&p.server_status, &c->rbuf[base], 2);
+    base += 2;
+
+    /* More zeroes? */
+    memcpy(&p.filler2, &c->rbuf[base], 13);
+    base += 13;
+
+    /* Rest of I-don't-know */
+    memcpy(&p.scramble_buff2, &c->rbuf[base], 13);
+    base += 13;
+
+    fprintf(stdout, "Handshake packet: %x\n%s\n%x\n%x\n%x\n", p.protocol_version, p.server_version, p.thread_id, p.filler1, p.server_capabilities);
 
     return 0;
 }
@@ -559,12 +600,20 @@ static int my_consume_handshake_packet(conn *c)
  * changes. Doesn't do anything useful ;)
  * Only call this when there's a full packet waiting.
  */
+/* Notes for packet state changes:
+ * client/server states should be advanced as packets are routed to them.
+ * currently there's no mechanism for knowing this since they are directly
+ * proxied. */
 static void run_packet_protocol(conn *c)
 {
     int ret = 0;
 
     switch (c->my_type) {
     case my_client:
+        switch (c->mypstate) {
+        case myc_wait_handshake:
+            break;
+        }
         break;
     case my_server:
         switch (c->mypstate) {
