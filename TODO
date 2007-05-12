@@ -14,7 +14,8 @@ DONE ### write buffer resizing for large packets.
 DONE ### (fixed some nice bugs) test running two connections at once
 figure out how to free if (ptr == NULL) { don'tfree } correctly
 if buffer grows too big, shrink it after completing a write/read
-learn about the authentication packets. print out the known data.
+DONE ### learn about the authentication packets. print out the known data.
+implement mysql's password crypto handshake
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
 shuffle functions to be more in order
