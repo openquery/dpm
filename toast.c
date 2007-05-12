@@ -85,7 +85,7 @@ typedef struct {
 
 struct my_handshake_packet {
     uint8_t        protocol_version;
-    char *server_version;
+    char          *server_version;
     uint32_t       thread_id;
     uint64_t       scramble_buff;
     uint8_t        filler1; /* Should always be 0x00 */
@@ -544,13 +544,12 @@ static int my_consume_handshake_packet(conn *c)
         perror("Could not malloc()");
         return -1;
     }
-    memcpy(&p.server_version, &c->rbuf[base], my_size);
+    memcpy(p.server_version, &c->rbuf[base], my_size);
     base += my_size;
 
     memcpy(&p.thread_id, (uint32_t *)&c->rbuf[base], 4);
 
-    /* FIXME: I'm not doing this pointer stuff right, am I? */
-    fprintf(stdout, "Handshake packet: %u\n%s\n%u\n", p.protocol_version, (char *)&p.server_version, p.thread_id);
+    fprintf(stdout, "Handshake packet: %u\n%s\n%u\n", p.protocol_version, p.server_version, p.thread_id);
 
     return 0;
 }
