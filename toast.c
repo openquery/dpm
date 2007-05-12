@@ -608,6 +608,10 @@ static int my_consume_handshake_packet(conn *c)
     return 0;
 }
 
+/* FIXME: Two stupid optional params. if no scramble buf, and no database
+ * name, is that the end of the packet? Should test, instead of strlen'ing
+ * random memory.
+ */
 static int my_consume_auth_packet(conn *c)
 {
     struct my_auth_packet p;
