@@ -119,6 +119,14 @@ struct my_ok_packet {
     uint64_t       message_len; /* Length of the above string. */
 };
 
+struct my_err_packet {
+    uint8_t        field_count; /* Always 0xFF. */
+    uint16_t       errnum;
+    char           marker; /* Always '#' */
+    char           sqlstate[6]; /* Length is actually 5. +1 for \0 */
+    char          *message; /* Should be null terminated? */
+};
+
 /* Declarations */
 static void sig_hup(const int sig);
 int set_sock_nonblock(int fd);
@@ -138,6 +146,7 @@ static int grow_write_buffer(conn *c, int newsize);
 static int run_packet_protocol(conn *c);
 static int my_consume_auth_packet(conn *c);
 static int my_consume_ok_packet(conn *c);
+static int my_consume_err_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
 
 /* Icky ewwy global vars. */
@@ -767,6 +776,54 @@ static int my_consume_ok_packet(conn *c)
     return 0;
 }
 
+/* FIXME: There might be an "unknown error" state which changes the packet
+ * payload.
+ */
+static int my_consume_err_packet(conn *c)
+{
+    struct my_err_packet p;
+    int base = c->readto + 4;
+    size_t my_size = 0;
+
+    fprintf(stdout, "***PACKET*** parsing err packet.\n");
+
+    /* Clear out the struct. */
+    memset(&p, 0, sizeof(struct my_err_packet));
+
+    p.field_count = c->rbuf[base];
+    base++;
+
+    memcpy(&p.errnum, &c->rbuf[base], 2);
+    base += 2;
+
+    p.marker = c->rbuf[base];
+    base++;
+
+    memcpy(&p.sqlstate, &c->rbuf[base], 5);
+    base += 5;
+
+    /* Have to add our own null termination... */
+    p.sqlstate[6] = '\0';
+
+    /* Why couldn't they just use a packed string? Or a null terminated
+     * string? Was it really worth saving one byte when it should be numeric
+     * anyway?
+     */
+    my_size = c->packetsize - (base - c->readto);
+
+    p.message = (char *)malloc( my_size + 1 );
+    if (p.message == 0) {
+        perror("Could not malloc()");
+        return -1;
+    }
+    memcpy(p.message, &c->rbuf[base], my_size);
+    p.message[my_size] = '\0';
+
+    fprintf(stdout, "***PACKET*** Server Error Packet: %d\n%d\n%c\n%s\n%s\n", p.field_count, p.errnum, p.marker, p.sqlstate, p.message);
+
+    return 0;
+}
+
 /* Run the packet level MySQL protocol.
  * TODO: Currently this is just used to identify the packets and mark state
  * changes. Doesn't do anything useful ;)
@@ -807,9 +864,9 @@ static int run_packet_protocol(conn *c)
                 ret = my_consume_ok_packet(c);
                 c->mypstate = mys_waiting;
                 break;
-            case 0xFE:
-                /*ret = my_consume_err_packet(c);
-                c->mypstate = mys_waiting;*/
+            case 255:
+                ret = my_consume_err_packet(c);
+                c->mypstate = mys_waiting;
                 break;
             }
         }
