@@ -985,6 +985,7 @@ static int run_packet_protocol(conn *c)
         case myc_wait_handshake:
             ret = my_consume_auth_packet(c);
             c->mypstate = myc_waiting;
+            break;
         case myc_waiting:
             ret = my_consume_cmd_packet(c);
             //c->mypstate = myc_sent_cmd;
@@ -1036,6 +1037,7 @@ static int run_packet_protocol(conn *c)
                 if (c->packetsize < 10) {
                     ret = my_consume_eof_packet(c);
                     c->mypstate = mys_sent_handshake;
+                    fprintf(stdout, "***RESETTING SERVER STATE***\n");
                     break;
                 }
             default:
