@@ -50,6 +50,7 @@ enum myproto_states {
     myc_wait_auth_return,
     myc_waiting, /* Waiting to send a command. */
     mys_waiting, /* Waiting to receive a command. */
+    myc_sent_cmd,
 };
 
 enum my_types {
@@ -127,6 +128,11 @@ struct my_err_packet {
     char          *message; /* Should be null terminated? */
 };
 
+struct my_cmd_packet {
+    uint8_t        command; /* Flags describe this. */
+    unsigned char *arg;     /* Non-null-terminated string that was the cmd */
+};
+
 /* Declarations */
 static void sig_hup(const int sig);
 int set_sock_nonblock(int fd);
@@ -147,6 +153,7 @@ static int run_packet_protocol(conn *c);
 static int my_consume_auth_packet(conn *c);
 static int my_consume_ok_packet(conn *c);
 static int my_consume_err_packet(conn *c);
+static int my_consume_cmd_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
 
 /* Icky ewwy global vars. */
@@ -824,6 +831,35 @@ static int my_consume_err_packet(conn *c)
     return 0;
 }
 
+static int my_consume_cmd_packet(conn *c)
+{
+    struct my_cmd_packet p;
+    int base = c->readto + 4;
+    size_t my_size = 0;
+
+    fprintf(stdout, "***PACKET*** parsing cmd packet.\n");
+
+    /* Clear out the struct. */
+    memset(&p, 0, sizeof(struct my_cmd_packet));
+
+    p.command = c->rbuf[base];
+    base++;
+
+    my_size = c->packetsize - (base - c->readto);
+
+    p.arg = (unsigned char *)malloc( my_size + 1 );
+    if (p.arg == 0) {
+        perror("Could not malloc()");
+        return -1;
+    }
+    memcpy(p.arg, &c->rbuf[base], my_size);
+    p.arg[my_size] = '\0';
+
+    fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p.command, p.arg);
+
+    return 0;
+}
+
 /* Run the packet level MySQL protocol.
  * TODO: Currently this is just used to identify the packets and mark state
  * changes. Doesn't do anything useful ;)
@@ -845,6 +881,9 @@ static int run_packet_protocol(conn *c)
         case myc_wait_handshake:
             ret = my_consume_auth_packet(c);
             c->mypstate = myc_waiting;
+        case myc_waiting:
+            ret = my_consume_cmd_packet(c);
+            //c->mypstate = myc_sent_cmd;
         }
         break;
     case my_server:
