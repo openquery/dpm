@@ -51,6 +51,8 @@ enum myproto_states {
     myc_waiting, /* Waiting to send a command. */
     mys_waiting, /* Waiting to receive a command. */
     myc_sent_cmd,
+    mys_sending_fields,
+    mys_sending_rows,
 };
 
 enum my_types {
@@ -133,6 +135,31 @@ struct my_cmd_packet {
     unsigned char *arg;     /* Non-null-terminated string that was the cmd */
 };
 
+struct my_rset_packet {
+    uint64_t       field_count; /* Actually a field count this time. */
+    uint64_t       extra; /* Optional random junk. */
+};
+
+/* TODO: This struct should be special to avoid tons of wasted space.
+ * use one long char array and use length offsets.
+ */
+struct my_field_packet {
+    unsigned char catalog[10];
+    unsigned char db[200];
+    unsigned char table[200];
+    unsigned char org_table[200];
+    unsigned char name[200];
+    unsigned char org_name[200];
+    uint8_t       filler1;
+    uint16_t      charsetnr;
+    uint32_t      length;
+    uint8_t       type;
+    uint16_t      flags;
+    uint8_t       decimals;
+    uint16_t      filler2;
+    uint64_t      my_default; /* only happens for table definitions? */
+};
+
 /* Declarations */
 static void sig_hup(const int sig);
 int set_sock_nonblock(int fd);
@@ -154,6 +181,10 @@ static int my_consume_auth_packet(conn *c);
 static int my_consume_ok_packet(conn *c);
 static int my_consume_err_packet(conn *c);
 static int my_consume_cmd_packet(conn *c);
+static int my_consume_rset_packet(conn *c);
+static int my_consume_field_packet(conn *c);
+static int my_consume_row_packet(conn *c);
+static int my_consume_eof_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
 
 /* Icky ewwy global vars. */
@@ -860,6 +891,79 @@ static int my_consume_cmd_packet(conn *c)
     return 0;
 }
 
+static int my_consume_rset_packet(conn *c)
+{
+    struct my_rset_packet p;
+    int base = c->readto + 4;
+
+    fprintf(stdout, "***PACKET*** parsing result set packet.\n");
+
+    /* Clear out the struct. */
+    memset(&p, 0, sizeof(struct my_rset_packet));
+
+    p.field_count = my_read_binary_field(c->rbuf, &base);
+    /* FIXME: This isn't actually a bloody field count? */
+    /*c->expected_fields = p.field_count;*/
+
+    if (c->packetsize > (base - c->readto)) {
+        p.extra = my_read_binary_field(c->rbuf, &base);
+    }
+
+    fprintf(stdout, "***PACKET*** Client Resultset Packet: %llx\n%llx\n", (unsigned long long)p.field_count, (unsigned long long)p.extra);
+
+    return 0;
+}
+
+/* Placeholder */
+static int my_consume_field_packet(conn *c)
+{
+    //int base = c->readto + 4;
+    int i = 0;
+
+    fprintf(stdout, "***PACKET*** parsing field packet.\n");
+
+    for (i = 4; i < c->packetsize; i++) {
+        fprintf(stdout, "%x ", c->rbuf[c->readto + i]);
+    }
+    fprintf(stdout, "\n");
+    for (i = 4; i < c->packetsize; i++) {
+        fprintf(stdout, "%c ", c->rbuf[c->readto + i]);
+    }
+    
+    fprintf(stdout, "\n");
+
+    return 0;
+}
+
+/* Placeholder */
+static int my_consume_row_packet(conn *c)
+{
+    //int base = c->readto + 4;
+    int i = 0;
+
+    fprintf(stdout, "***PACKET*** parsing row packet.\n");
+
+    for (i = 4; i < c->packetsize; i++) {
+        fprintf(stdout, "%x ", c->rbuf[c->readto + i]);
+    }
+    fprintf(stdout, "\n");
+    for (i = 4; i < c->packetsize; i++) {
+        fprintf(stdout, "%c ", c->rbuf[c->readto + i]);
+    }
+    
+    fprintf(stdout, "\n");
+
+    return 0;
+}
+
+/* Placeholder */
+static int my_consume_eof_packet(conn *c)
+{
+    fprintf(stdout, "***PACKET*** parsing EOF packet.\n");
+
+    return 0;
+}
+
 /* Run the packet level MySQL protocol.
  * TODO: Currently this is just used to identify the packets and mark state
  * changes. Doesn't do anything useful ;)
@@ -901,12 +1005,41 @@ static int run_packet_protocol(conn *c)
             /* TODO: Add spifty flags for identifying packets. */
             case 0:
                 ret = my_consume_ok_packet(c);
-                c->mypstate = mys_waiting;
+                //c->mypstate = mys_waiting;
                 break;
             case 255:
                 ret = my_consume_err_packet(c);
-                c->mypstate = mys_waiting;
+                //c->mypstate = mys_waiting;
                 break;
+            default:
+                /* It's either a result set, field, or row packet. */
+                ret = my_consume_rset_packet(c);
+                c->mypstate = mys_sending_fields;
+                break;
+            }
+            break;
+        case mys_sending_fields:
+            switch (c->rbuf[c->readto + 4]) {
+            case 254:
+                if (c->packetsize < 10) {
+                    ret = my_consume_eof_packet(c);
+                    c->mypstate = mys_sending_rows;
+                    break;
+                }
+            default:
+                ret = my_consume_field_packet(c);
+            }
+            break;
+        case mys_sending_rows:
+            switch (c->rbuf[c->readto + 4]) {
+            case 254:
+                if (c->packetsize < 10) {
+                    ret = my_consume_eof_packet(c);
+                    c->mypstate = mys_sent_handshake;
+                    break;
+                }
+            default:
+                ret = my_consume_row_packet(c);
             }
         }
         break;
@@ -932,7 +1065,7 @@ static int run_protocol(conn *c, int read, int written)
     socklen_t errsize = sizeof(err);
     conn *remote = NULL;
 
-    fprintf(stdout, "Running protocol state machine\n");
+    //fprintf(stdout, "Running protocol state machine\n");
 
     while (!finished) {
         switch (c->mystate) {
@@ -971,7 +1104,7 @@ static int run_protocol(conn *c, int read, int written)
             remote = (conn *)c->remote;
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-                //fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
+                fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
                 /* Drive the packet state machine. */
                 err = run_packet_protocol(c);
                 if (err == -1) return -1;

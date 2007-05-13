@@ -1,8 +1,7 @@
 PRACTICE:
 
 WORK # write helper routines to serialize/deserialize length coded binaries
-write helper routines to read/write null terminated strings into a struct
-figure out how to free if (ptr == NULL) { don'tfree } correctly
+DONE ### figure out how to free if (ptr == NULL) { don'tfree } correctly
 if buffer grows too big, shrink it after completing a write/read
 learn about all basic packet types
 redo packet state machine to do proper state transitions when packets are
