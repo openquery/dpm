@@ -83,6 +83,7 @@ typedef struct {
     int    mypstate; /* Packet state */
     uint8_t my_type; /* Type of *remote* end of this connection */
     int    packetsize;
+    uint64_t expected_fields; /* Number of field packets expected. */
 
     /* Proxy references. */
     struct conn *remote;
@@ -902,8 +903,7 @@ static int my_consume_rset_packet(conn *c)
     memset(&p, 0, sizeof(struct my_rset_packet));
 
     p.field_count = my_read_binary_field(c->rbuf, &base);
-    /* FIXME: This isn't actually a bloody field count? */
-    /*c->expected_fields = p.field_count;*/
+    c->expected_fields = p.field_count;
 
     if (c->packetsize > (base - c->readto)) {
         p.extra = my_read_binary_field(c->rbuf, &base);
