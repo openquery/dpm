@@ -7,6 +7,7 @@ if buffer grows too big, shrink it after completing a write/read
 learn about all basic packet types
 redo packet state machine to do proper state transitions when packets are
 _sent_ to a remote host.
+write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
 implement mysql's password crypto handshake
 learn to handle large mysql packets (at least identify them, and bomb saying

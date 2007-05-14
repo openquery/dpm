@@ -89,7 +89,7 @@ typedef struct {
     struct conn *remote;
 } conn;
 
-struct my_handshake_packet {
+typedef struct {
     uint8_t        protocol_version;
     char          *server_version;
     uint32_t       thread_id;
@@ -100,9 +100,9 @@ struct my_handshake_packet {
     uint16_t       server_status;
     unsigned char  filler2[13]; /* Should always be 0x00 */
     unsigned char  scramble_buff2[13]; /* nooooo clue */
-};
+} my_handshake_packet;
 
-struct my_auth_packet {
+typedef struct {
     uint32_t       client_flags;
     uint32_t       max_packet_size;
     uint8_t        charset_number;
@@ -111,9 +111,9 @@ struct my_auth_packet {
     unsigned char  scramble_buff[21];
     uint8_t        filler2;
     char          *databasename;
-};
+} my_auth_packet;
 
-struct my_ok_packet {
+typedef struct {
     uint8_t        field_count; /* Always zero to identify packet. */
     uint64_t       affected_rows; /* 1-9 byte encoded length. */
     uint64_t       insert_id; /* 1-9 byte encoded insert id. */
@@ -121,30 +121,30 @@ struct my_ok_packet {
     uint16_t       warning_count; /* 16 bit numeric for number of warnings? */
     char          *message; /* length encoded string of warnings. */
     uint64_t       message_len; /* Length of the above string. */
-};
+} my_ok_packet;
 
-struct my_err_packet {
+typedef struct {
     uint8_t        field_count; /* Always 0xFF. */
     uint16_t       errnum;
     char           marker; /* Always '#' */
     char           sqlstate[6]; /* Length is actually 5. +1 for \0 */
     char          *message; /* Should be null terminated? */
-};
+} my_err_packet;
 
-struct my_cmd_packet {
+typedef struct {
     uint8_t        command; /* Flags describe this. */
     unsigned char *arg;     /* Non-null-terminated string that was the cmd */
-};
+} my_cmd_packet;
 
-struct my_rset_packet {
+typedef struct {
     uint64_t       field_count; /* Actually a field count this time. */
     uint64_t       extra; /* Optional random junk. */
-};
+} my_rset_packet;
 
 /* TODO: This struct should be special to avoid tons of wasted space.
  * use one long char array and use length offsets.
  */
-struct my_field_packet {
+/*struct my_field_packet {
     unsigned char catalog[10];
     unsigned char db[200];
     unsigned char table[200];
@@ -158,8 +158,8 @@ struct my_field_packet {
     uint16_t      flags;
     uint8_t       decimals;
     uint16_t      filler2;
-    uint64_t      my_default; /* only happens for table definitions? */
-};
+    uint64_t      my_default;
+};*/
 
 /* Declarations */
 static void sig_hup(const int sig);
@@ -178,11 +178,12 @@ static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
 static int run_packet_protocol(conn *c);
-static int my_consume_auth_packet(conn *c);
-static int my_consume_ok_packet(conn *c);
-static int my_consume_err_packet(conn *c);
-static int my_consume_cmd_packet(conn *c);
-static int my_consume_rset_packet(conn *c);
+static my_handshake_packet *my_consume_handshake_packet(conn *c);
+static my_auth_packet *my_consume_auth_packet(conn *c);
+static my_ok_packet *my_consume_ok_packet(conn *c);
+static my_err_packet *my_consume_err_packet(conn *c);
+static my_cmd_packet *my_consume_cmd_packet(conn *c);
+static my_rset_packet *my_consume_rset_packet(conn *c);
 static int my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
 static int my_consume_eof_packet(conn *c);
@@ -632,107 +633,117 @@ static void my_consume_header(conn *c)
  * into a single line for processing.
  * FIXME: Server can send 0xFF as protocol if there was an error.
  */
-static int my_consume_handshake_packet(conn *c)
+static my_handshake_packet *my_consume_handshake_packet(conn *c)
 {
-    struct my_handshake_packet p;
+    my_handshake_packet *p;
     int base = c->readto + 4;
     size_t my_size = 0;
 
     fprintf(stdout, "***PACKET*** parsing handshake packet.\n");
 
     /* Clear out the struct. */
-    memset(&p, 0, sizeof(struct my_handshake_packet));
+    p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_handshake_packet));
    
     /* We only support protocol 10 right now... */
-    p.protocol_version = c->rbuf[base];
-    if (p.protocol_version != 10) {
+    p->protocol_version = c->rbuf[base];
+    if (p->protocol_version != 10) {
         fprintf(stderr, "We only support protocol version 10! Closing.\n");
-        return -1;
+        return NULL;
     }
 
     base++;
 
     /* Server version string. Crappy malloc. */
     my_size = strlen((const char *)&c->rbuf[base]);
-    p.server_version = (char *)malloc( my_size );
+    p->server_version = (char *)malloc( my_size );
 
-    if (p.server_version == 0) {
+    if (p->server_version == 0) {
         perror("Could not malloc()");
-        return -1;
+        return NULL;
     }
-    memcpy(p.server_version, &c->rbuf[base], my_size);
+    memcpy(p->server_version, &c->rbuf[base], my_size);
     /* +1 to account for the \0 */
     base += my_size + 1;
 
     /* TODO: I think technically I can do this with one memcpy. */
 
     /* 4 byte thread id */
-    memcpy(&p.thread_id, &c->rbuf[base], 4);
+    memcpy(&p->thread_id, &c->rbuf[base], 4);
     base += 4;
 
     /* 64-bit scramble buff? or 8 byte char? :P Docs don't say. */
-    memcpy(&p.scramble_buff, &c->rbuf[base], 8);
+    memcpy(&p->scramble_buff, &c->rbuf[base], 8);
     base += 8;
 
     /* Should be 0 */
-    p.filler1 = c->rbuf[base];
+    p->filler1 = c->rbuf[base];
     base++;
 
     /* Set of flags for server caps. */
     /* TODO: Need to explicitly disable compression, ssl, other features we
      * don't support. */
-    memcpy(&p.server_capabilities, &c->rbuf[base], 2);
+    memcpy(&p->server_capabilities, &c->rbuf[base], 2);
     base += 2;
 
     /* Language setting. Pass-through and/or ignore. */
-    p.server_language = c->rbuf[base];
+    p->server_language = c->rbuf[base];
     base++;
 
     /* Server status flags. AUTOCOMMIT flags and such? */
-    memcpy(&p.server_status, &c->rbuf[base], 2);
+    memcpy(&p->server_status, &c->rbuf[base], 2);
     base += 2;
 
     /* More zeroes? */
-    memcpy(&p.filler2, &c->rbuf[base], 13);
+    memcpy(&p->filler2, &c->rbuf[base], 13);
     base += 13;
 
     /* Rest of I-don't-know */
-    memcpy(&p.scramble_buff2, &c->rbuf[base], 13);
+    memcpy(&p->scramble_buff2, &c->rbuf[base], 13);
     base += 13;
 
-    fprintf(stdout, "***PACKET*** Handshake packet: %x\n%s\n%x\n%x\n%x\n", p.protocol_version, p.server_version, p.thread_id, p.filler1, p.server_capabilities);
+    fprintf(stdout, "***PACKET*** Handshake packet: %x\n%s\n%x\n%x\n%x\n", p->protocol_version, p->server_version, p->thread_id, p->filler1, p->server_capabilities);
 
-    return 0;
+    return p;
 }
 
 /* FIXME: Two stupid optional params. if no scramble buf, and no database
  * name, is that the end of the packet? Should test, instead of strlen'ing
  * random memory.
  */
-static int my_consume_auth_packet(conn *c)
+static my_auth_packet *my_consume_auth_packet(conn *c)
 {
-    struct my_auth_packet p;
+    my_auth_packet *p;
     int base = c->readto + 4;
     size_t my_size = 0;
 
     fprintf(stdout, "***PACKET*** parsing auth packet.\n");
 
     /* Clear out the struct. */
-    memset(&p, 0, sizeof(struct my_auth_packet));
+    p = (my_auth_packet *)malloc( sizeof(my_auth_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_auth_packet));
 
     /* Client flags. Same as server_flags with some crap added/removed.
      * at this point in packet processing we should take out unsupported
      * options.
      */
-    memcpy(&p.client_flags, &c->rbuf[base], 4);
+    memcpy(&p->client_flags, &c->rbuf[base], 4);
     base += 4;
 
     /* Should we short circuit this to something more reasonable for latency?
      */
-    memcpy(&p.max_packet_size, &c->rbuf[base], 4);
+    memcpy(&p->max_packet_size, &c->rbuf[base], 4);
     base += 4;
 
-    p.charset_number = c->rbuf[base];
+    p->charset_number = c->rbuf[base];
     base++;
 
     /* Skip the filler crap. */
@@ -741,20 +752,20 @@ static int my_consume_auth_packet(conn *c)
     /* Supplied username. */
     /* FIXME: This string reading crap should be a helper function. */
     my_size = strlen((const char *)&c->rbuf[base]);
-    p.user = (char *)malloc( my_size );
+    p->user = (char *)malloc( my_size );
 
-    if (p.user == 0) {
+    if (p->user == 0) {
         perror("Could not malloc()");
-        return -1;
+        return NULL;
     }
-    memcpy(p.user, &c->rbuf[base], my_size);
+    memcpy(p->user, &c->rbuf[base], my_size);
     /* +1 to account for the \0 */
     base += my_size + 1;
 
     /* "Length coded binary" my ass. */
     /* If we don't have one, leave it all zeroes. */
     if (c->rbuf[base] > 0) {
-        memcpy(&p.scramble_buff, &c->rbuf[base], 21);
+        memcpy(&p->scramble_buff, &c->rbuf[base], 21);
         base += 21;
     } else {
         /* I guess this "filler" is only here if there's no scramble. */
@@ -762,87 +773,97 @@ static int my_consume_auth_packet(conn *c)
     }
 
     my_size = strlen((const char *)&c->rbuf[base]);
-    p.databasename = (char *)malloc( my_size );
+    p->databasename = (char *)malloc( my_size );
 
-    if (p.databasename == 0) {
+    if (p->databasename == 0) {
         perror("Could not malloc()");
-        return -1;
+        return NULL;
     }
-    memcpy(p.databasename, &c->rbuf[base], my_size);
+    memcpy(p->databasename, &c->rbuf[base], my_size);
     /* +1 to account for the \0 */
     base += my_size + 1;
 
-    fprintf(stdout, "***PACKET*** Client auth packet: %x\n%u\n%x\n%s\n%s\n", p.client_flags, p.max_packet_size, p.charset_number, p.user, p.databasename);
+    fprintf(stdout, "***PACKET*** Client auth packet: %x\n%u\n%x\n%s\n%s\n", p->client_flags, p->max_packet_size, p->charset_number, p->user, p->databasename);
 
-    return 0;
+    return p;
 }
 
-static int my_consume_ok_packet(conn *c)
+static my_ok_packet *my_consume_ok_packet(conn *c)
 {
-    struct my_ok_packet p;
+    my_ok_packet *p;
     int base = c->readto + 4;
     uint64_t my_size = 0;
 
     fprintf(stdout, "***PACKET*** parsing ok packet.\n");
 
     /* Clear out the struct. */
-    memset(&p, 0, sizeof(struct my_ok_packet));
+    p = (my_ok_packet *)malloc( sizeof(my_ok_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_ok_packet));
 
-    p.affected_rows = my_read_binary_field(c->rbuf, &base);
+    p->affected_rows = my_read_binary_field(c->rbuf, &base);
 
-    p.insert_id = my_read_binary_field(c->rbuf, &base);
+    p->insert_id = my_read_binary_field(c->rbuf, &base);
 
-    memcpy(&p.server_status, &c->rbuf[base], 2);
+    memcpy(&p->server_status, &c->rbuf[base], 2);
     base += 2;
 
-    memcpy(&p.warning_count, &c->rbuf[base], 2);
+    memcpy(&p->warning_count, &c->rbuf[base], 2);
     base += 2;
 
     if (c->packetsize > base - c->readto && (my_size = my_read_binary_field(c->rbuf, &base))) {
-        p.message = (char *)malloc( my_size );
-        if (p.message == 0) {
+        p->message = (char *)malloc( my_size );
+        if (p->message == 0) {
             perror("Could not malloc()");
-            return -1;
+            return NULL;
         }
-        p.message_len = my_size;
-        memcpy(p.message, &c->rbuf[base], my_size);
+        p->message_len = my_size;
+        memcpy(p->message, &c->rbuf[base], my_size);
     } else {
-        p.message = NULL;
+        p->message = NULL;
     }
 
-    fprintf(stdout, "***PACKET*** Server OK packet: %x\n%llu\n%llu\n%u\n%u\n%s\n", p.field_count, (unsigned long long)p.affected_rows, (unsigned long long)p.insert_id, p.server_status, p.warning_count, p.message_len ? p.message : '\0');
+    fprintf(stdout, "***PACKET*** Server OK packet: %x\n%llu\n%llu\n%u\n%u\n%s\n", p->field_count, (unsigned long long)p->affected_rows, (unsigned long long)p->insert_id, p->server_status, p->warning_count, p->message_len ? p->message : '\0');
 
-    return 0;
+    return p;
 }
 
 /* FIXME: There might be an "unknown error" state which changes the packet
  * payload.
  */
-static int my_consume_err_packet(conn *c)
+static my_err_packet *my_consume_err_packet(conn *c)
 {
-    struct my_err_packet p;
+    my_err_packet *p;
     int base = c->readto + 4;
     size_t my_size = 0;
 
     fprintf(stdout, "***PACKET*** parsing err packet.\n");
 
     /* Clear out the struct. */
-    memset(&p, 0, sizeof(struct my_err_packet));
+    p = (my_err_packet *)malloc( sizeof(my_err_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_err_packet));
 
-    p.field_count = c->rbuf[base];
+    p->field_count = c->rbuf[base];
     base++;
 
-    memcpy(&p.errnum, &c->rbuf[base], 2);
+    memcpy(&p->errnum, &c->rbuf[base], 2);
     base += 2;
 
-    p.marker = c->rbuf[base];
+    p->marker = c->rbuf[base];
     base++;
 
-    memcpy(&p.sqlstate, &c->rbuf[base], 5);
+    memcpy(&p->sqlstate, &c->rbuf[base], 5);
     base += 5;
 
     /* Have to add our own null termination... */
-    p.sqlstate[6] = '\0';
+    p->sqlstate[6] = '\0';
 
     /* Why couldn't they just use a packed string? Or a null terminated
      * string? Was it really worth saving one byte when it should be numeric
@@ -850,68 +871,78 @@ static int my_consume_err_packet(conn *c)
      */
     my_size = c->packetsize - (base - c->readto);
 
-    p.message = (char *)malloc( my_size + 1 );
-    if (p.message == 0) {
+    p->message = (char *)malloc( my_size + 1 );
+    if (p->message == 0) {
         perror("Could not malloc()");
-        return -1;
+        return NULL;
     }
-    memcpy(p.message, &c->rbuf[base], my_size);
-    p.message[my_size] = '\0';
+    memcpy(p->message, &c->rbuf[base], my_size);
+    p->message[my_size] = '\0';
 
-    fprintf(stdout, "***PACKET*** Server Error Packet: %d\n%d\n%c\n%s\n%s\n", p.field_count, p.errnum, p.marker, p.sqlstate, p.message);
+    fprintf(stdout, "***PACKET*** Server Error Packet: %d\n%d\n%c\n%s\n%s\n", p->field_count, p->errnum, p->marker, p->sqlstate, p->message);
 
-    return 0;
+    return p;
 }
 
-static int my_consume_cmd_packet(conn *c)
+static my_cmd_packet *my_consume_cmd_packet(conn *c)
 {
-    struct my_cmd_packet p;
+    my_cmd_packet *p;
     int base = c->readto + 4;
     size_t my_size = 0;
 
     fprintf(stdout, "***PACKET*** parsing cmd packet.\n");
 
     /* Clear out the struct. */
-    memset(&p, 0, sizeof(struct my_cmd_packet));
+    p = (my_cmd_packet *)malloc( sizeof(my_cmd_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_cmd_packet));
 
-    p.command = c->rbuf[base];
+    p->command = c->rbuf[base];
     base++;
 
     my_size = c->packetsize - (base - c->readto);
 
-    p.arg = (unsigned char *)malloc( my_size + 1 );
-    if (p.arg == 0) {
+    p->arg = (unsigned char *)malloc( my_size + 1 );
+    if (p->arg == 0) {
         perror("Could not malloc()");
-        return -1;
+        return NULL;
     }
-    memcpy(p.arg, &c->rbuf[base], my_size);
-    p.arg[my_size] = '\0';
+    memcpy(p->arg, &c->rbuf[base], my_size);
+    p->arg[my_size] = '\0';
 
-    fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p.command, p.arg);
+    fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p->command, p->arg);
 
-    return 0;
+    return p;
 }
 
-static int my_consume_rset_packet(conn *c)
+static my_rset_packet *my_consume_rset_packet(conn *c)
 {
-    struct my_rset_packet p;
+    my_rset_packet *p;
     int base = c->readto + 4;
 
     fprintf(stdout, "***PACKET*** parsing result set packet.\n");
 
     /* Clear out the struct. */
-    memset(&p, 0, sizeof(struct my_rset_packet));
+    p = (my_rset_packet *)malloc( sizeof(my_rset_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_rset_packet));
 
-    p.field_count = my_read_binary_field(c->rbuf, &base);
-    c->expected_fields = p.field_count;
+    p->field_count = my_read_binary_field(c->rbuf, &base);
+    c->expected_fields = p->field_count;
 
     if (c->packetsize > (base - c->readto)) {
-        p.extra = my_read_binary_field(c->rbuf, &base);
+        p->extra = my_read_binary_field(c->rbuf, &base);
     }
 
-    fprintf(stdout, "***PACKET*** Client Resultset Packet: %llx\n%llx\n", (unsigned long long)p.field_count, (unsigned long long)p.extra);
+    fprintf(stdout, "***PACKET*** Client Resultset Packet: %llx\n%llx\n", (unsigned long long)p->field_count, (unsigned long long)p->extra);
 
-    return 0;
+    return p;
 }
 
 /* Placeholder */
@@ -932,6 +963,7 @@ static int my_consume_field_packet(conn *c)
     
     fprintf(stdout, "\n");
 
+    fprintf(stdout, "***PACKET*** parsed field packet.\n");
     return 0;
 }
 
@@ -953,6 +985,7 @@ static int my_consume_row_packet(conn *c)
     
     fprintf(stdout, "\n");
 
+    fprintf(stdout, "***PACKET*** parsed row packet.\n");
     return 0;
 }
 
@@ -977,7 +1010,7 @@ static int my_consume_eof_packet(conn *c)
  */
 static int run_packet_protocol(conn *c)
 {
-    int ret = 0;
+    void *ret = NULL;
 
     switch (c->my_type) {
     case my_client:
@@ -1023,35 +1056,36 @@ static int run_packet_protocol(conn *c)
             switch (c->rbuf[c->readto + 4]) {
             case 254:
                 if (c->packetsize < 10) {
-                    ret = my_consume_eof_packet(c);
+                    my_consume_eof_packet(c);
                     c->mypstate = mys_sending_rows;
                     break;
                 }
             default:
-                ret = my_consume_field_packet(c);
+                my_consume_field_packet(c);
             }
             break;
         case mys_sending_rows:
             switch (c->rbuf[c->readto + 4]) {
             case 254:
                 if (c->packetsize < 10) {
-                    ret = my_consume_eof_packet(c);
+                    my_consume_eof_packet(c);
                     c->mypstate = mys_sent_handshake;
                     fprintf(stdout, "***RESETTING SERVER STATE***\n");
                     break;
                 }
             default:
-                ret = my_consume_row_packet(c);
+                my_consume_row_packet(c);
             }
         }
         break;
     }
 
     /* Boo boo in parsing packet. */
-    if (ret == -1) {
+    /* TODO: Bring this back once everything properly returns a pointer. */
+    /*if (ret == NULL) {
         fprintf(stderr, "Could not parse packet, state: %d\n", c->mypstate);
         return -1;
-    }
+    }*/
 
     return 0;
 }
