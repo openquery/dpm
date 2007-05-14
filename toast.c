@@ -578,7 +578,7 @@ static uint64_t my_read_binary_field(unsigned char *buf, int *base)
 
     if (buf[*base] < 251) {
         (*base)++;
-        return (uint64_t) buf[*base];
+        return (uint64_t) buf[*base - 1];
     }
 
     (*base)++;
