@@ -83,7 +83,7 @@
 /* End defines from mysql_com.h */
 
 enum my_proto_commands {
-    COM_SLEEP,
+    COM_SLEEP = 0,
     COM_QUIT,
     COM_INIT_DB,
     COM_QUERY,
@@ -194,6 +194,13 @@ typedef struct {
 } conn;
 
 typedef struct {
+    int ptype;
+    void    (*free_me)(void *p);
+    void    (*to_buf)(void *p, conn *c);
+} my_packet_header;
+
+typedef struct {
+    my_packet_header h;
     uint8_t        protocol_version;
     char          *server_version;
     uint32_t       thread_id;
@@ -207,6 +214,7 @@ typedef struct {
 } my_handshake_packet;
 
 typedef struct {
+    my_packet_header h;
     uint32_t       client_flags;
     uint32_t       max_packet_size;
     uint8_t        charset_number;
@@ -218,6 +226,7 @@ typedef struct {
 } my_auth_packet;
 
 typedef struct {
+    my_packet_header h;
     uint8_t        field_count; /* Always zero to identify packet. */
     uint64_t       affected_rows; /* 1-9 byte encoded length. */
     uint64_t       insert_id; /* 1-9 byte encoded insert id. */
@@ -228,6 +237,7 @@ typedef struct {
 } my_ok_packet;
 
 typedef struct {
+    my_packet_header h;
     uint8_t        field_count; /* Always 0xFF. */
     uint16_t       errnum;
     char           marker; /* Always '#' */
@@ -236,11 +246,13 @@ typedef struct {
 } my_err_packet;
 
 typedef struct {
+    my_packet_header h;
     uint8_t        command; /* Flags describe this. */
     unsigned char *arg;     /* Non-null-terminated string that was the cmd */
 } my_cmd_packet;
 
 typedef struct {
+    my_packet_header h;
     uint64_t       field_count; /* Actually a field count this time. */
     uint64_t       extra; /* Optional random junk. */
 } my_rset_packet;
@@ -737,7 +749,6 @@ static void my_consume_header(conn *c)
 
 /* FIXME: If we have the second scramblebuff, it needs to be assembled
  * into a single line for processing.
- * FIXME: Server can send 0xFF as protocol if there was an error.
  */
 static my_handshake_packet *my_consume_handshake_packet(conn *c)
 {
@@ -754,7 +765,10 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
         return NULL;
     }
     memset(p, 0, sizeof(my_handshake_packet));
-   
+
+    p->h.ptype = myp_handshake;
+    /* FIXME: add free and store handlers */
+
     /* We only support protocol 10 right now... */
     p->protocol_version = c->rbuf[base];
     if (p->protocol_version != 10) {
@@ -837,6 +851,9 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     }
     memset(p, 0, sizeof(my_auth_packet));
 
+    p->h.ptype = myp_auth;
+    /* FIXME: add free and store handlers */
+
     /* Client flags. Same as server_flags with some crap added/removed.
      * at this point in packet processing we should take out unsupported
      * options.
@@ -910,6 +927,9 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
     }
     memset(p, 0, sizeof(my_ok_packet));
 
+    p->h.ptype = myp_ok;
+    /* FIXME: add free and store handlers */
+
     p->affected_rows = my_read_binary_field(c->rbuf, &base);
 
     p->insert_id = my_read_binary_field(c->rbuf, &base);
@@ -955,6 +975,9 @@ static my_err_packet *my_consume_err_packet(conn *c)
         return NULL;
     }
     memset(p, 0, sizeof(my_err_packet));
+
+    p->h.ptype = myp_err;
+    /* FIXME: add free and store handlers */
 
     p->field_count = c->rbuf[base];
     base++;
@@ -1006,6 +1029,9 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
     }
     memset(p, 0, sizeof(my_cmd_packet));
 
+    p->h.ptype = myp_cmd;
+    /* FIXME: add free and store handlers */
+
     p->command = c->rbuf[base];
     base++;
 
@@ -1038,6 +1064,9 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
         return NULL;
     }
     memset(p, 0, sizeof(my_rset_packet));
+
+    p->h.ptype = myp_rset;
+    /* FIXME: add free and store handlers */
 
     p->field_count = my_read_binary_field(c->rbuf, &base);
     c->field_count = p->field_count;
