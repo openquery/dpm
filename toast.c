@@ -229,7 +229,7 @@ static int handle_write(conn *c);
 static conn *init_conn(int newfd);
 static void handle_event(int fd, short event, void *arg);
 static int add_conn_event(conn *c, const int new_flags);
-static int del_conn_event(conn *c, const int new_flags);
+//static int del_conn_event(conn *c, const int new_flags);
 static int update_conn_event(conn *c, const int new_flags);
 static int run_protocol(conn *c, int read, int written);
 static int my_next_packet_start(conn *c);
@@ -579,13 +579,13 @@ static void handle_event(int fd, short event, void *arg)
             return;
         }
 
-        newc->remote = newback;
+        newc->remote = (struct conn *)newback;
 
         /* Weird association. Makes sure the backend can get back to us
          * clients.
          * FIXME: This'll need cleaning up code.
          */
-        newback->remote = newc;
+        newback->remote = (struct conn *)newc;
 
         newc->mypstate  = myc_wait_handshake;
         newc->my_type   = my_client;
