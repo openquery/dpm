@@ -325,12 +325,12 @@ static int add_conn_event(conn *c, const int new_flags)
 }
 
 /* FIXME: Logic is wrong */
-static int del_conn_event(conn *c, const int new_flags)
+/*static int del_conn_event(conn *c, const int new_flags)
 {
     int ret;
-    ret = update_conn_event(c, c->ev_flags & new_flags);
+    ret = update_conn_event(c, c->ev_flags & ~new_flags);
     return ret;
-}
+}*/
 
 static int update_conn_event(conn *c, const int new_flags)
 {

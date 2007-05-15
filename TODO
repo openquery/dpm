@@ -1,11 +1,10 @@
 PRACTICE:
 
 WORK # write helper routines to serialize/deserialize length coded binaries
-DONE ### figure out how to free if (ptr == NULL) { don'tfree } correctly
+not all of the state machine names make sense; clean it up.
 use struct buffer sizes from mysql_com.h
 if buffer grows too big, shrink it after completing a write/read
 learn about all basic packet types
-DONE ### redo packet state machine to do proper state transitions when packets are _sent_ to a remote host.
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
 implement mysql's password crypto handshake
@@ -19,6 +18,46 @@ more libevent infrastructure; timers
 memory management; caching connection shit. malloc big range. reuse buffers.
 use multiple .c files to make the program.
 write a makefile
+
+Plans:
+
+As packets are processed, foward up into lua.
+call lua with tables: conn, packet
+
+It is lua's job to request backend connections.
+As new connections come in, lua can request a backend and attach two
+connections as a proxy at any point.
+get called at final packet of a request as well; can 'break' the proxy chain.
+try to do auth from within lua.
+bubble flags up to lua as tables.
+figure out the best way to differentiate flagsets from enumerations.
+run lua once at init.
+listening sockets should be established from lua?
+requests should know the listening socket for client connections...
+so: listen ip/port can signify something.
+otherwise use other features?
+Figure out if SQL comments can be sent to the server correctly...
+need ability to enqueue client events:
+
+client sends COM_QUERY request
+lua identifies and shelves the request packet in an internal array.
+lua builds an array of packets:
+'show status'
+'COM_QUERY'
+'show status'
+pops first request, executes. at end of execution lua returns with the same
+context. pop COM_QUERY, do same, pop show status, do same. compare results,
+log to file.
+
+schedule timer events from lua; 'come back with a reference to this
+table/state at this time' - could create a backend connection, and run SHOW
+PROCESSLIST once per second, reoccurring. No client needed...
+
+Unique connection id
+Stats tracking (?) (bytes, queries, uptime, etc)
+
+DONE ### redo packet state machine to do proper state transitions when packets are _sent_ to a remote host.
+DONE ### figure out how to free if (ptr == NULL) { don'tfree } correctly
 DONE ### set libevent to listen on socket with callback, accept sockets.
 DONE ### signal ignore sigpipe
 DONE ### handle reading data on socket, printing locally.
