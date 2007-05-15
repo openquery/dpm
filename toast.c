@@ -37,7 +37,7 @@
 #define MY_PORT 3306
 
 enum my_proto_commands {
-    COM_SLEEP = 0,
+    COM_SLEEP,
     COM_QUIT,
     COM_INIT_DB,
     COM_QUERY,
@@ -67,7 +67,7 @@ enum my_proto_commands {
     COM_SET_OPTION,
     COM_STMT_FETCH,
     COM_DAEMON,
-    COM_END
+    COM_END,
 };
 
 /* MySQL protocol states */
@@ -77,7 +77,7 @@ enum myconn_states {
     my_connect, /* Attempting to connect to a remote socket */
 };
 
-enum mypacket_states {
+enum mypacket_types {
     myp_none, /* No packet/error */
     myp_handshake,
     myp_auth,

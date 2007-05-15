@@ -1,10 +1,11 @@
 PRACTICE:
 
 WORK # write helper routines to serialize/deserialize length coded binaries
-not all of the state machine names make sense; clean it up.
+pull in as many GPL'ed defines as possible, write own for others.
+change as many packet related mallocs to char arrays as possible.
+create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
 use struct buffer sizes from mysql_com.h
-if buffer grows too big, shrink it after completing a write/read
-learn about all basic packet types
+write deserialize for fields and rows
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
 implement mysql's password crypto handshake
@@ -18,6 +19,8 @@ more libevent infrastructure; timers
 memory management; caching connection shit. malloc big range. reuse buffers.
 use multiple .c files to make the program.
 write a makefile
+not all of the state machine names make sense; clean it up.
+if buffer grows too big, shrink it after completing a write/read
 
 Plans:
 
