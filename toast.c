@@ -28,11 +28,47 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+/* Internal defines */
+
 #define BUF_SIZE 2048
 
 /* Test pass-through variables. */
 #define MY_SERVER "127.0.0.1"
 #define MY_PORT 3306
+
+enum my_proto_commands {
+    COM_SLEEP = 0,
+    COM_QUIT,
+    COM_INIT_DB,
+    COM_QUERY,
+    COM_FIELD_LIST,
+    COM_CREATE_DB,
+    COM_DROP_DB,
+    COM_REFRESH,
+    COM_SHUTDOWN,
+    COM_STATISTICS,
+    COM_PROCESS_INFO,
+    COM_CONNECT,
+    COM_PROCESS_KILL,
+    COM_DEBUG,
+    COM_PING,
+    COM_TIME,
+    COM_DELAYED_INSERT,
+    COM_CHANGE_USER,
+    COM_BINLOG_DUMP,
+    COM_TABLE_DUMP,
+    COM_CONNECT_OUT,
+    COM_REGISTER_SLAVE,
+    COM_STMT_PREPARE,
+    COM_STMT_EXECUTE,
+    COM_STMT_SEND_LONG_DATA,
+    COM_STMT_CLOSE,
+    COM_STMT_RESET,
+    COM_SET_OPTION,
+    COM_STMT_FETCH,
+    COM_DAEMON,
+    COM_END
+};
 
 /* MySQL protocol states */
 enum myconn_states {
@@ -41,18 +77,39 @@ enum myconn_states {
     my_connect, /* Attempting to connect to a remote socket */
 };
 
+enum mypacket_states {
+    myp_none, /* No packet/error */
+    myp_handshake,
+    myp_auth,
+    myp_ok,
+    myp_cmd,
+    myp_err,
+    myp_rset,
+    myp_field,
+    myp_row,
+    myp_eof,
+};
+
 enum myproto_states {
     mys_connect,
     myc_connect,
     mys_sent_handshake,
     myc_wait_handshake,
-    mys_sent_auth_return,
-    myc_wait_auth_return,
     myc_waiting, /* Waiting to send a command. */
     mys_waiting, /* Waiting to receive a command. */
     myc_sent_cmd,
     mys_sending_fields,
     mys_sending_rows,
+    mys_wait_auth,
+    mys_sending_ok,
+    mys_wait_cmd,
+    mys_sending_rset,
+    myc_wait_auth,
+    mys_sending_handshake,
+};
+
+const char *state_name[]={
+    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sending fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "Server sending handshake",
 };
 
 enum my_types {
@@ -83,7 +140,8 @@ typedef struct {
     int    mypstate; /* Packet state */
     uint8_t my_type; /* Type of *remote* end of this connection */
     int    packetsize;
-    uint64_t expected_fields; /* Number of field packets expected. */
+    uint64_t field_count; /* Number of field packets expected. */
+    uint8_t last_cmd; /* Last command ran through this connection. */
 
     /* Proxy references. */
     struct conn *remote;
@@ -177,7 +235,9 @@ static int run_protocol(conn *c, int read, int written);
 static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
-static int run_packet_protocol(conn *c);
+//static int run_packet_protocol(conn *c);
+static int sent_packet(conn *c, void **p, int ptype, int field_count);
+static int received_packet(conn *c, void **p, int *ptype, int field_count);
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static my_auth_packet *my_consume_auth_packet(conn *c);
 static my_ok_packet *my_consume_ok_packet(conn *c);
@@ -934,7 +994,7 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
     memset(p, 0, sizeof(my_rset_packet));
 
     p->field_count = my_read_binary_field(c->rbuf, &base);
-    c->expected_fields = p->field_count;
+    c->field_count = p->field_count;
 
     if (c->packetsize > (base - c->readto)) {
         p->extra = my_read_binary_field(c->rbuf, &base);
@@ -997,6 +1057,163 @@ static int my_consume_eof_packet(conn *c)
     return 0;
 }
 
+/* Can't send a packet unless we know what it is.
+ * So *p and ptype must be defined.
+ */
+ /* NOTE: This means the packet was sent _TO_ the wire on this conn */
+static int sent_packet(conn *c, void **p, int ptype, int field_count)
+{
+    int ret = 0;
+
+    fprintf(stdout, "START State: %s\n", state_name[c->mypstate]);
+    switch (c->my_type) {
+    case my_client:
+        /* Doesn't matter what we send to the client right now.
+         * The clients maintain their own state based on what command they
+         * just sent. We can add state tracking in the future so you can write
+         * clients from lua without going crazy and pulling out all your hair.
+         */
+        switch (c->mypstate) {
+        case myc_wait_handshake:
+            assert(ptype == myp_handshake);
+            c->mypstate = myc_wait_auth;
+        }
+        break;
+    case my_server:
+        switch (c->mypstate) {
+        case mys_wait_auth:
+            assert(ptype == myp_auth);
+            c->mypstate = mys_sending_ok;
+            break;
+        case mys_wait_cmd:
+            assert(ptype == myp_cmd);
+            {
+            my_cmd_packet *cmd = (my_cmd_packet *)*p;
+            c->last_cmd = cmd->command;
+            switch (c->last_cmd) {
+            case COM_QUERY:
+                c->mypstate = mys_sending_rset;
+                break;
+            case COM_FIELD_LIST:
+                c->mypstate = mys_sending_fields;
+                break;
+            default:
+                c->mypstate = mys_sending_ok;
+            }
+            }
+            break;
+        }
+    }
+
+    fprintf(stdout, "END State: %s\n", state_name[c->mypstate]);
+    return ret;
+}
+
+/* If we received a packet, we don't necessarily know what it is.
+ * So *p can be NULL and ptype can be 0 (myp_unknown).
+ */
+ /* NOTE: This means the packet was receive _ON_ the wire for this conn */
+static int received_packet(conn *c, void **p, int *ptype, int field_count)
+{
+    int ret = 0;
+    fprintf(stdout, "START State: %s\n", state_name[c->mypstate]);
+    switch (c->my_type) {
+    case my_client:
+        switch (c->mypstate) {
+        case myc_wait_auth:
+            *p = my_consume_auth_packet(c);
+            *ptype = myp_auth;
+            c->mypstate = myc_waiting;
+            break;
+        case myc_waiting:
+            *p = my_consume_cmd_packet(c);
+            *ptype = myp_cmd;
+            break;
+        }
+        break;
+    case my_server:
+        switch (c->mypstate) {
+        case mys_connect:
+            *p = my_consume_handshake_packet(c);
+            *ptype = myp_handshake;
+            c->mypstate = mys_wait_auth;
+            break;
+        case mys_sending_ok:
+            switch (field_count) {
+            case 0:
+                *p = my_consume_ok_packet(c);
+                *ptype = myp_ok;
+                c->mypstate = mys_wait_cmd;
+                break;
+            case 255:
+                *ptype = myp_err;
+                break;
+            default:
+                /* Should never get here. */
+                assert(field_count == 0 || field_count == 255);
+            }
+            break;
+        case mys_sending_rset:
+            switch (field_count) {
+            case 255:
+                *ptype = myp_err;
+                break;
+            default:
+                *p = my_consume_rset_packet(c);
+                *ptype = myp_rset;
+                c->mypstate = mys_sending_fields;
+            }
+            break;
+        case mys_sending_fields:
+            switch (field_count) {
+            case 254:
+                my_consume_eof_packet(c);
+                *ptype = myp_eof;
+                /* Can change this to another switch, or cuddle a flag under
+                 * case 'mys_wait_cmd', if it's really more complex than this.
+                 */
+                if (c->last_cmd == COM_QUERY) {
+                    c->mypstate = mys_sending_rows;
+                } else {
+                    c->mypstate = mys_wait_cmd;
+                }
+                break;
+            case 255:
+                *ptype = myp_err;
+                break;
+            default:
+                my_consume_field_packet(c);
+                *ptype = myp_field;
+            }
+            break;
+        case mys_sending_rows:
+            switch (field_count) {
+            case 254:
+                my_consume_eof_packet(c);
+                *ptype = myp_eof;
+                c->mypstate = mys_wait_cmd;
+                break;
+            case 255:
+                *ptype = myp_err;
+                break;
+            default:
+                my_consume_row_packet(c);
+                *ptype = myp_row;
+                break;
+            }
+            break;
+        }
+
+        /* Read errors if we detected an error packet. */
+        if (*ptype == myp_err) {
+            *p = my_consume_err_packet(c);
+            c->mypstate = mys_wait_cmd;
+        }
+    }
+    fprintf(stdout, "END State: %s\n", state_name[c->mypstate]);
+    return ret;
+}
+
 /* Run the packet level MySQL protocol.
  * TODO: Currently this is just used to identify the packets and mark state
  * changes. Doesn't do anything useful ;)
@@ -1008,6 +1225,8 @@ static int my_consume_eof_packet(conn *c)
  * proxied. ie: State 'myc_wait_handshake' should transition to
  * 'myc_sending_auth_return' or somesuch, before its next packet.
  */
+
+#ifdef MY_TRASH
 static int run_packet_protocol(conn *c)
 {
     void *ret = NULL;
@@ -1089,6 +1308,7 @@ static int run_packet_protocol(conn *c)
 
     return 0;
 }
+#endif
 
 /* Run the "MySQL" protocol on a socket. Generic state machine logic.
  * Would've loved to use Ragel, but it doesn't make sense here.
@@ -1141,18 +1361,29 @@ static int run_protocol(conn *c, int read, int written)
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
                 fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
+                {
+                int ptype = myp_none;
+                void *p = NULL;
+                int ret = 0;
                 /* Drive the packet state machine. */
-                err = run_packet_protocol(c);
-                if (err == -1) return -1;
+                ret = received_packet(c, &p, &ptype, c->rbuf[c->readto + 4]);
+                //if (p == NULL) return -1;
+                /*err = run_packet_protocol(c);
+                if (err == -1) return -1;*/
                 /* Buffered up all pending packet reads. Write out to remote */
                 if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
                     return -1;
                 }
+
+                /* Drive other half of state machine. */
+                ret = sent_packet(remote, &p, ptype, c->field_count);
+
                 memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
                 remote->towrite += c->packetsize;
 
                 /* Copied in the packet; advance to next packet. */
                 c->readto += c->packetsize;
+                }
             }
             if (c == NULL) {
                 break;
