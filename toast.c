@@ -36,6 +36,52 @@
 #define MY_SERVER "127.0.0.1"
 #define MY_PORT 3306
 
+/* MySQL defines from mysql_com.h - It's GPL! */
+#define SERVER_STATUS_IN_TRANS     1    /* Transaction has started */
+#define SERVER_STATUS_AUTOCOMMIT   2    /* Server in auto_commit mode */
+#define SERVER_MORE_RESULTS_EXISTS 8    /* Multi query - next query exists */
+
+#define SERVER_QUERY_NO_GOOD_INDEX_USED 16
+#define SERVER_QUERY_NO_INDEX_USED      32
+
+/* Client packet flags */
+#define CLIENT_LONG_PASSWORD    1   /* new more secure passwords */
+#define CLIENT_FOUND_ROWS   2   /* Found instead of affected rows */
+#define CLIENT_LONG_FLAG    4   /* Get all column flags */
+#define CLIENT_CONNECT_WITH_DB  8   /* One can specify db on connect */
+#define CLIENT_NO_SCHEMA    16  /* Don't allow database.table.column */
+#define CLIENT_COMPRESS     32  /* Can use compression protocol */
+#define CLIENT_ODBC     64  /* Odbc client */
+#define CLIENT_LOCAL_FILES  128 /* Can use LOAD DATA LOCAL */
+#define CLIENT_IGNORE_SPACE 256 /* Ignore spaces before '(' */
+#define CLIENT_PROTOCOL_41  512 /* New 4.1 protocol */
+#define CLIENT_INTERACTIVE  1024    /* This is an interactive client */
+#define CLIENT_SSL              2048    /* Switch to SSL after handshake */
+#define CLIENT_IGNORE_SIGPIPE   4096    /* IGNORE sigpipes */
+#define CLIENT_TRANSACTIONS 8192    /* Client knows about transactions */
+#define CLIENT_RESERVED         16384   /* Old flag for 4.1 protocol  */
+#define CLIENT_SECURE_CONNECTION 32768  /* New 4.1 authentication */
+#define CLIENT_MULTI_STATEMENTS (1UL << 16) /* Enable/disable multi-stmt support */
+#define CLIENT_MULTI_RESULTS    (1UL << 17) /* Enable/disable multi-results */
+
+/*
+  This flag is sent when a read-only cursor is exhausted, in reply to
+  COM_STMT_FETCH command.
+*/
+#define SERVER_STATUS_LAST_ROW_SENT 128
+#define SERVER_STATUS_DB_DROPPED        256 /* A database was dropped */
+#define SERVER_STATUS_NO_BACKSLASH_ESCAPES 512
+
+#define MYSQL_ERRMSG_SIZE   512
+
+#define NAME_LEN    64      /* Field/table name length */
+#define HOSTNAME_LENGTH 60
+#define USERNAME_LENGTH 16
+#define SERVER_VERSION_LENGTH 60
+#define SQLSTATE_LENGTH 5
+
+/* End defines from mysql_com.h */
+
 enum my_proto_commands {
     COM_SLEEP,
     COM_QUIT,

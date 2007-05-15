@@ -1,7 +1,7 @@
 PRACTICE:
 
 WORK # write helper routines to serialize/deserialize length coded binaries
-pull in as many GPL'ed defines as possible, write own for others.
+DONE ### pull in as many GPL'ed defines as possible, write own for others.
 change as many packet related mallocs to char arrays as possible.
 create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
 use struct buffer sizes from mysql_com.h
