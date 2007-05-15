@@ -5,8 +5,7 @@ DONE ### figure out how to free if (ptr == NULL) { don'tfree } correctly
 use struct buffer sizes from mysql_com.h
 if buffer grows too big, shrink it after completing a write/read
 learn about all basic packet types
-redo packet state machine to do proper state transitions when packets are
-_sent_ to a remote host.
+DONE ### redo packet state machine to do proper state transitions when packets are _sent_ to a remote host.
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
 implement mysql's password crypto handshake

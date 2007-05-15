@@ -1097,8 +1097,12 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             case COM_FIELD_LIST:
                 c->mypstate = mys_sending_fields;
                 break;
-            default:
+            case COM_INIT_DB:
                 c->mypstate = mys_sending_ok;
+                break;
+            default:
+                fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
+                assert(0);
             }
             }
             break;
