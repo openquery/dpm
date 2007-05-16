@@ -2,8 +2,7 @@ PRACTICE:
 
 WORK # write helper routines to serialize/deserialize length coded binaries
 DONE ### pull in as many GPL'ed defines as possible, write own for others.
-create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
-use struct buffer sizes from mysql_com.h
+DONE ### create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
 write deserialize for fields and rows
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
@@ -20,6 +19,7 @@ use multiple .c files to make the program.
 write a makefile
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
+use struct buffer sizes from mysql_com.h
 
 Plans:
 
