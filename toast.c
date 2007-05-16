@@ -257,9 +257,7 @@ typedef struct {
     uint64_t       extra; /* Optional random junk. */
 } my_rset_packet;
 
-/* TODO: This struct should be special to avoid tons of wasted space.
- * use one long char array and use length offsets.
- */
+/* NOTE: Do we need to store the length of 'fields' anywhere? */
 typedef struct {
     my_packet_header h;
     unsigned char          *fields; /* Should be length of packet - 14 or so, I guess. */
@@ -284,6 +282,12 @@ typedef struct {
     uint16_t       filler2;
     uint64_t       my_default;
 } my_field_packet;
+
+typedef struct {
+    my_packet_header h;
+    uint16_t    warning_count;
+    uint16_t    status_flags;
+} my_eof_packet;
 
 /* Declarations */
 static void sig_hup(const int sig);
@@ -312,7 +316,7 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c);
 static my_rset_packet *my_consume_rset_packet(conn *c);
 static my_field_packet *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
-static int my_consume_eof_packet(conn *c);
+static my_eof_packet *my_consume_eof_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
 
 /* Icky ewwy global vars. */
@@ -1219,10 +1223,34 @@ static int my_consume_row_packet(conn *c)
 }
 
 /* Placeholder */
-static int my_consume_eof_packet(conn *c)
+static my_eof_packet *my_consume_eof_packet(conn *c)
 {
+    my_eof_packet *p;
+    int base = c->readto + 4;
+ 
     fprintf(stdout, "***PACKET*** parsing EOF packet.\n");
 
+     /* Clear out the struct. */
+    p = (my_eof_packet *)malloc( sizeof(my_eof_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_eof_packet));
+
+    p->h.ptype = myp_eof;
+    /* FIXME: add free and store handlers */
+
+    /* Skip field_count, is always 0xFE */
+    base++;
+
+    memcpy(&p->warning_count, &c->rbuf[base], 2);
+    base += 2;
+
+    memcpy(&p->status_flags, &c->rbuf[base], 2);
+    base += 2;
+
+    fprintf(stdout, "***PACKET*** parsed EOF packet.\n");
     return 0;
 }
 
@@ -1340,6 +1368,9 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         case mys_sending_fields:
             switch (field_count) {
             case 254:
+                /* Grr. impossible to tell an EOF apart from a ROW or FIELD
+                 * unless it's the right size to be an EOF as well */
+                if (c->packetsize < 10) {
                 my_consume_eof_packet(c);
                 *ptype = myp_eof;
                 /* Can change this to another switch, or cuddle a flag under
@@ -1351,6 +1382,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                     c->mypstate = mys_wait_cmd;
                 }
                 break;
+                }
             case 255:
                 *ptype = myp_err;
                 break;
@@ -1362,10 +1394,12 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         case mys_sending_rows:
             switch (field_count) {
             case 254:
+                if (c->packetsize < 10) {
                 my_consume_eof_packet(c);
                 *ptype = myp_eof;
                 c->mypstate = mys_wait_cmd;
                 break;
+                }
             case 255:
                 *ptype = myp_err;
                 break;
