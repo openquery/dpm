@@ -260,22 +260,30 @@ typedef struct {
 /* TODO: This struct should be special to avoid tons of wasted space.
  * use one long char array and use length offsets.
  */
-/*struct my_field_packet {
-    unsigned char catalog[10];
-    unsigned char db[200];
-    unsigned char table[200];
-    unsigned char org_table[200];
-    unsigned char name[200];
-    unsigned char org_name[200];
-    uint8_t       filler1;
-    uint16_t      charsetnr;
-    uint32_t      length;
-    uint8_t       type;
-    uint16_t      flags;
-    uint8_t       decimals;
-    uint16_t      filler2;
-    uint64_t      my_default;
-};*/
+typedef struct {
+    my_packet_header h;
+    unsigned char          *fields; /* Should be length of packet - 14 or so, I guess. */
+    unsigned char          *catalog; /* below are pointers into *fields */
+    unsigned char          *db;
+    unsigned char          *table;
+    unsigned char          *org_table;
+    unsigned char          *name;
+    unsigned char          *org_name;
+    uint64_t       catalog_len;
+    uint64_t       db_len;
+    uint64_t       table_len;
+    uint64_t       org_table_len;
+    uint64_t       name_len;
+    uint64_t       org_name_len;
+    uint8_t        filler1;
+    uint16_t       charsetnr;
+    uint32_t       length;
+    uint8_t        type;
+    uint16_t       flags;
+    uint8_t        decimals;
+    uint16_t       filler2;
+    uint64_t       my_default;
+} my_field_packet;
 
 /* Declarations */
 static void sig_hup(const int sig);
@@ -302,7 +310,7 @@ static my_ok_packet *my_consume_ok_packet(conn *c);
 static my_err_packet *my_consume_err_packet(conn *c);
 static my_cmd_packet *my_consume_cmd_packet(conn *c);
 static my_rset_packet *my_consume_rset_packet(conn *c);
-static int my_consume_field_packet(conn *c);
+static my_field_packet *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
 static int my_consume_eof_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
@@ -1080,26 +1088,112 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
     return p;
 }
 
-/* Placeholder */
-static int my_consume_field_packet(conn *c)
+static my_field_packet *my_consume_field_packet(conn *c)
 {
-    //int base = c->readto + 4;
-    int i = 0;
+    my_field_packet *p;
+    int base = c->readto + 4;
+    size_t my_size = 0;
+    unsigned char *start_ptr;
 
     fprintf(stdout, "***PACKET*** parsing field packet.\n");
 
-    for (i = 4; i < c->packetsize; i++) {
-        fprintf(stdout, "%x ", c->rbuf[c->readto + i]);
+    /* Clear out the struct. */
+    p = (my_field_packet *)malloc( sizeof(my_field_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
     }
-    fprintf(stdout, "\n");
-    for (i = 4; i < c->packetsize; i++) {
-        fprintf(stdout, "%c ", c->rbuf[c->readto + i]);
+    memset(p, 0, sizeof(my_field_packet));
+
+    p->h.ptype = myp_field;
+    /* FIXME: add free and store handlers */
+
+    /* This packet type has a ton of dynamic length fields.
+     * What we're going to do instead of 6 mallocs is use an offset table
+     * and a bunch of pointers into one fat malloc.
+     */
+
+    my_size = c->packetsize - 4; /* Remove a few bytes for now. */
+
+    p->fields = (unsigned char *)malloc( my_size );
+    if (p->fields == 0) {
+        perror("Malloc()");
+        return NULL;
     }
-    
-    fprintf(stdout, "\n");
+    start_ptr = p->fields;
+
+    /* This is the basic repetition here.
+     * The protocol docs say there might be \0's here, but lets add them
+     * anyway... Many of the clients do.
+     */
+    p->catalog_len = my_read_binary_field(c->rbuf, &base);
+    p->catalog = start_ptr;
+    memcpy(p->catalog, &c->rbuf[base], p->catalog_len);
+    base += p->catalog_len;
+    *(start_ptr += p->catalog_len) = '\0';
+
+    p->db_len = my_read_binary_field(c->rbuf, &base);
+    p->db = start_ptr + 1;
+    memcpy(p->db, &c->rbuf[base], p->db_len);
+    base += p->db_len;
+    *(start_ptr += p->db_len + 1) = '\0';
+
+    p->table_len = my_read_binary_field(c->rbuf, &base);
+    p->table = start_ptr + 1;
+    memcpy(p->table, &c->rbuf[base], p->table_len);
+    base += p->table_len;
+    *(start_ptr += p->table_len + 1) = '\0';
+
+    p->org_table_len = my_read_binary_field(c->rbuf, &base);
+    p->org_table = start_ptr + 1;
+    memcpy(p->org_table, &c->rbuf[base], p->org_table_len);
+    base += p->org_table_len;
+    *(start_ptr += p->org_table_len + 1) = '\0';
+
+    p->name_len = my_read_binary_field(c->rbuf, &base);
+    p->name = start_ptr + 1;
+    memcpy(p->name, &c->rbuf[base], p->name_len);
+    base += p->name_len;
+    *(start_ptr += p->name_len + 1) = '\0';
+
+    p->org_name_len = my_read_binary_field(c->rbuf, &base);
+    p->org_name = start_ptr + 1;
+    memcpy(p->org_name, &c->rbuf[base], p->org_name_len);
+    base += p->org_name_len;
+    *(start_ptr += p->org_name_len + 1) = '\0';
+
+    /* Rest of this packet is straightforward. */
+
+    /* Skip filler field */
+    base++;
+
+    memcpy(&p->charsetnr, &c->rbuf[base], 2);
+    base += 2;
+
+    memcpy(&p->length, &c->rbuf[base], 4);
+    base += 4;
+
+    p->type = c->rbuf[base];
+    base++;
+
+    memcpy(&p->flags, &c->rbuf[base], 2);
+    base += 2;
+
+    p->decimals = c->rbuf[base];
+    base++;
+
+    /* Skip second filler field */
+    base += 2;
+
+    /* Default is optional? */
+    /* FIXME: I might be confusing this as a length encoded number, when it's
+     * a length encoded string of binary data. */
+    if (c->packetsize > (base - c->readto)) {
+        p->my_default = my_read_binary_field(c->rbuf, &base);
+    }
 
     fprintf(stdout, "***PACKET*** parsed field packet.\n");
-    return 0;
+    return p;
 }
 
 /* Placeholder */
