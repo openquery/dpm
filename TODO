@@ -1,9 +1,7 @@
 PRACTICE:
 
 WORK # write helper routines to serialize/deserialize length coded binaries
-DONE ### pull in as many GPL'ed defines as possible, write own for others.
-DONE ### create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
-write deserialize for fields and rows
+WORK # write deserialize for fields and rows
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
 implement mysql's password crypto handshake
@@ -58,6 +56,8 @@ PROCESSLIST once per second, reoccurring. No client needed...
 Unique connection id
 Stats tracking (?) (bytes, queries, uptime, etc)
 
+DONE ### pull in as many GPL'ed defines as possible, write own for others.
+DONE ### create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
 DONE ### redo packet state machine to do proper state transitions when packets are _sent_ to a remote host.
 DONE ### figure out how to free if (ptr == NULL) { don'tfree } correctly
 DONE ### set libevent to listen on socket with callback, accept sockets.
