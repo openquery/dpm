@@ -206,13 +206,12 @@ typedef struct {
     uint8_t        protocol_version;
     char          *server_version;
     uint32_t       thread_id;
-    uint64_t       scramble_buff;
+    unsigned char  scramble_buff[21]; /* NULL terminated, for some reason. */
     uint8_t        filler1; /* Should always be 0x00 */
     uint16_t       server_capabilities;
     uint8_t        server_language;
     uint16_t       server_status;
     unsigned char  filler2[13]; /* Should always be 0x00 */
-    unsigned char  scramble_buff2[13]; /* nooooo clue */
 } my_handshake_packet;
 
 typedef struct {
@@ -222,7 +221,7 @@ typedef struct {
     uint8_t        charset_number;
     unsigned char  filler[23];
     char          *user;
-    unsigned char  scramble_buff[21];
+    unsigned char  scramble_buff[21]; /* NULL terminated. */
     uint8_t        filler2;
     char          *databasename;
 } my_auth_packet;
@@ -813,7 +812,7 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     memcpy(&p->thread_id, &c->rbuf[base], 4);
     base += 4;
 
-    /* 64-bit scramble buff? or 8 byte char? :P Docs don't say. */
+    /* First 8 bytes of scramble_buff. Sandwich with 12 more + \0 later */
     memcpy(&p->scramble_buff, &c->rbuf[base], 8);
     base += 8;
 
@@ -839,8 +838,8 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     memcpy(&p->filler2, &c->rbuf[base], 13);
     base += 13;
 
-    /* Rest of I-don't-know */
-    memcpy(&p->scramble_buff2, &c->rbuf[base], 13);
+    /* Rest of random number "string" */
+    memcpy(&p->scramble_buff[8], &c->rbuf[base], 13);
     base += 13;
 
     fprintf(stdout, "***PACKET*** Handshake packet: %x\n%s\n%x\n%x\n%x\n", p->protocol_version, p->server_version, p->thread_id, p->filler1, p->server_capabilities);
