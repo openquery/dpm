@@ -189,6 +189,8 @@ typedef struct {
     uint64_t field_count; /* Number of field packets expected. */
     uint8_t last_cmd; /* Last command ran through this connection. */
 
+    int listener;
+
     /* Proxy references. */
     struct conn *remote;
 } conn;
@@ -318,10 +320,12 @@ static my_field_packet *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
 static my_eof_packet *my_consume_eof_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
+/* Lua related forward declarations. */
+static int new_listener(lua_State *L);
 
 /* Icky ewwy global vars. */
 
-static int l_socket = 0; // server socket. duh :P
+//static int l_socket = 0; // server socket. duh :P
 static struct lua_State *L; // global lua state.
 
 /* Test outbound connection function */
@@ -595,6 +599,7 @@ static conn *init_conn(int newfd)
     newc->written  = 0;
     newc->readto   = 0;
     newc->towrite  = 0;
+    newc->listener = 0;
 
     newc->rbuf = (unsigned char *)malloc( (size_t)newc->rbufsize );
     newc->wbuf = (unsigned char *)malloc( (size_t)newc->wbufsize );
@@ -628,7 +633,7 @@ static void handle_event(int fd, short event, void *arg)
     int err   = 0;
 
     /* if we're the server socket, it's a new conn */
-    if (fd == l_socket) {
+    if (c->listener) {
         newfd = handle_accept(fd); /* error handling */
         fprintf(stdout, "Got new client sock %d\n", newfd);
 
@@ -1517,16 +1522,18 @@ static int run_protocol(conn *c, int read, int written)
     return 0;
 }
 
-int main (int argc, char **argv)
+
+/* TODO: Should return an object lua can use to later destroy the listener.
+ */
+static int new_listener(lua_State *L)
 {
     struct sockaddr_in addr;
     conn *listener;
-    struct sigaction sa;
     int flags = 1;
-
-    fprintf(stdout, "Starting up...\n");
-    // Initialize the server socket. Nonblock/reuse/etc.
-
+    int l_socket = 0;
+    const char *ip_addr = luaL_checkstring(L, 1);
+    double port_num = luaL_checknumber(L, 2);
+ 
     if ( (l_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
         return -1;
@@ -1538,8 +1545,8 @@ int main (int argc, char **argv)
     setsockopt(l_socket, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(5500);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(port_num);
+    addr.sin_addr.s_addr = inet_addr(ip_addr);
 
     if (bind(l_socket, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         perror("binding server socket");
@@ -1557,11 +1564,22 @@ int main (int argc, char **argv)
 
     listener->ev_flags = EV_READ | EV_PERSIST;
 
-    // Initialize the event system.
-    event_init();
+    listener->listener++;
 
     event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
     event_add(&listener->ev, NULL);
+
+    return 0;
+}
+
+int main (int argc, char **argv)
+{
+    struct sigaction sa;
+
+    fprintf(stdout, "Starting up...\n");
+
+    // Initialize the event system.
+    event_init();
 
     /* Lets ignore SIGPIPE... sorry, just about yanking this from memcached.
      * I tried to use the manpages but it came out exactly the same :P
@@ -1585,6 +1603,15 @@ int main (int argc, char **argv)
     if (L == NULL) {
         fprintf(stderr, "Could not create lua state\n");
         exit(-1);
+    }
+    luaL_openlibs(L);
+
+    lua_pushcfunction(L, new_listener);
+    lua_setglobal(L, "new_listener");
+
+    if (luaL_dofile(L, "toast.lua")) {
+        fprintf(stdout, "Could not run lua initializer!\n");
+        return -1;
     }
 
     fprintf(stdout, "Starting event dispatcher...\n");
