@@ -28,6 +28,9 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+/* Internal headers */
+#include "sha1.h"
+
 /* Internal defines */
 
 #define BUF_SIZE 2048
@@ -206,7 +209,7 @@ typedef struct {
     uint8_t        protocol_version;
     char          *server_version;
     uint32_t       thread_id;
-    unsigned char  scramble_buff[21]; /* NULL terminated, for some reason. */
+    char           scramble_buff[21]; /* NULL terminated, for some reason. */
     uint8_t        filler1; /* Should always be 0x00 */
     uint16_t       server_capabilities;
     uint8_t        server_language;
@@ -319,6 +322,11 @@ static my_field_packet *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
 static my_eof_packet *my_consume_eof_packet(conn *c);
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
+static uint8_t my_char_val(uint8_t X);
+static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len);
+static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2, uint len);
+static void my_scramble(unsigned char *dst, const unsigned char *random, const char *pass);
+static int my_check_scramble(const unsigned char *remote_scram, const unsigned char *random, const char *stored_hash);
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
 
@@ -740,6 +748,99 @@ static uint64_t my_read_binary_field(unsigned char *buf, int *base)
     return ret;
 }
 
+/* Mostly from sql/password.c in mysqld */
+static uint8_t my_char_val(uint8_t X)
+{
+  return (unsigned int) (X >= '0' && X <= '9' ? X-'0' :
+      X >= 'A' && X <= 'Z' ? X-'A'+10 : X-'a'+10);
+}
+
+static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len)
+{   
+  const char *str_end= src + len;
+  while (src < str_end) {
+      char tmp = my_char_val(*src++);
+      *dst++ = (tmp << 4) | my_char_val(*src++);
+  }
+}
+
+static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2, uint len)
+{
+  const uint8_t *s1_end= s1 + len;
+  while (s1 < s1_end)
+    *dst++= *s1++ ^ *s2++;
+}
+/* End. */
+
+/* Client scramble
+ * random is 20 byte random scramble from the server.
+ * pass is plaintext password supplied from client
+ * dst is a 20 byte buffer to receive the jumbled mess. */
+static void my_scramble(unsigned char *dst, const unsigned char *random, const char *pass)
+{
+    struct sha1_ctx context;
+    uint8_t hash1[SHA1_DIGEST_SIZE];
+    uint8_t hash2[SHA1_DIGEST_SIZE];
+
+    /* First hash the password. */
+    sha1_init(&context);
+    sha1_update(&context, strlen(pass), (const uint8_t *) pass);
+    sha1_final(&context);
+    sha1_digest(&context, SHA1_DIGEST_SIZE, hash1);
+
+    /* Second, hash the hash. */
+    sha1_init(&context);
+    sha1_update(&context, SHA1_DIGEST_SIZE, hash1);
+    sha1_final(&context);
+    sha1_digest(&context, SHA1_DIGEST_SIZE, hash2);
+
+    /* Now we have the equivalent of SELECT PASSWORD('whatever') */
+    /* Now SHA1 the random message against hash2, then xor it against hash1 */
+    sha1_init(&context);
+    sha1_update(&context, SHA1_DIGEST_SIZE, (const uint8_t *) random);
+    sha1_update(&context, SHA1_DIGEST_SIZE, hash2);
+    sha1_final(&context);
+    sha1_digest(&context, SHA1_DIGEST_SIZE, (uint8_t *) dst);
+
+    my_crypt((char *)dst, (const unsigned char *) dst, hash1, SHA1_DIGEST_SIZE);
+
+    /* The sha1 context has temporary data that needs to disappear. */
+    memset(&context, 0, sizeof(struct sha1_ctx));
+}
+
+/* Server side check. */
+static int my_check_scramble(const unsigned char *remote_scram, const unsigned char *random, const char *stored_hash)
+{
+    uint8_t pass_hash[SHA1_DIGEST_SIZE];
+    uint8_t rand_hash[SHA1_DIGEST_SIZE];
+    uint8_t pass_orig[SHA1_DIGEST_SIZE];
+    uint8_t pass_check[SHA1_DIGEST_SIZE];
+    struct sha1_ctx context;
+
+    /* Parse string into bytes... */
+    my_hex2octet(pass_hash, stored_hash, strlen(stored_hash));
+
+    /* Muck up our view of the password against our original random num */
+    sha1_init(&context);
+    sha1_update(&context, SHA1_DIGEST_SIZE, (const uint8_t *) random);
+    sha1_update(&context, SHA1_DIGEST_SIZE, pass_hash);
+    sha1_final(&context);
+    sha1_digest(&context, SHA1_DIGEST_SIZE, rand_hash);
+
+    /* Pull out the client sha1 */
+    my_crypt((char *) pass_orig, (const unsigned char *) rand_hash, (const unsigned char *) remote_scram, SHA1_DIGEST_SIZE);
+
+    /* Update it to be more like our own */
+    sha1_init(&context);
+    sha1_update(&context, SHA1_DIGEST_SIZE, pass_orig);
+    sha1_final(&context);
+    sha1_digest(&context, SHA1_DIGEST_SIZE, pass_check);
+    memset(&context, 0, sizeof(struct sha1_ctx));
+
+    /* Compare */
+    return memcmp(pass_hash, pass_check, SHA1_DIGEST_SIZE);
+}
+
 /* If we're ready to send the next packet along, prep the header and
  * return the starting position. */
 static int my_next_packet_start(conn *c)
@@ -904,8 +1005,8 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     /* "Length coded binary" my ass. */
     /* If we don't have one, leave it all zeroes. */
     if (c->rbuf[base] > 0) {
-        memcpy(&p->scramble_buff, &c->rbuf[base], 21);
-        base += 21;
+        memcpy(&p->scramble_buff, &c->rbuf[base + 1], 21);
+        base += 20;
     } else {
         /* I guess this "filler" is only here if there's no scramble. */
         base++;

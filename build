@@ -1,4 +1,6 @@
 #!/bin/bash
 
-rm -f toast
-gcc -g -Wall -Wextra -Wno-unused-parameter -o toast toast.c -levent -llua
+rm -f toast toast.o sha1.o
+gcc -g -Wall -Wextra -Wno-unused-parameter -c sha1.c
+gcc -g -Wall -Wextra -Wno-unused-parameter -c toast.c
+gcc -g -Wall -Wextra -Wno-unused-parameter -o toast toast.o sha1.o -levent -llua
