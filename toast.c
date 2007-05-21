@@ -306,12 +306,13 @@ static int add_conn_event(conn *c, const int new_flags);
 //static int del_conn_event(conn *c, const int new_flags);
 static int update_conn_event(conn *c, const int new_flags);
 static int run_protocol(conn *c, int read, int written);
+
 static int my_next_packet_start(conn *c);
 static void my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
-//static int run_packet_protocol(conn *c);
 static int sent_packet(conn *c, void **p, int ptype, int field_count);
 static int received_packet(conn *c, void **p, int *ptype, int field_count);
+
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static my_auth_packet *my_consume_auth_packet(conn *c);
 static my_ok_packet *my_consume_ok_packet(conn *c);
@@ -327,6 +328,7 @@ static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len);
 static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2, uint len);
 static void my_scramble(unsigned char *dst, const unsigned char *random, const char *pass);
 static int my_check_scramble(const unsigned char *remote_scram, const unsigned char *random, const char *stored_hash);
+
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
 

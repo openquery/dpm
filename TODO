@@ -4,7 +4,7 @@ WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
-implement mysql's password crypto handshake
+WORK ## implement mysql's password crypto handshake
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
 shuffle functions to be more in order
