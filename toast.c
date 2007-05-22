@@ -1677,10 +1677,14 @@ static int new_listener(lua_State *L)
 int main (int argc, char **argv)
 {
     struct sigaction sa;
+    static const struct luaL_Reg myp [] = {
+        {"listener", new_listener},
+        {NULL, NULL},
+    };
 
     fprintf(stdout, "Starting up...\n");
 
-    // Initialize the event system.
+    /* Initialize the event system. */
     event_init();
 
     /* Lets ignore SIGPIPE... sorry, just about yanking this from memcached.
@@ -1698,8 +1702,6 @@ int main (int argc, char **argv)
 
     fprintf(stdout, "Initializing Lua...\n");
 
-    /* Fire up LUA */
-
     L = lua_open();
 
     if (L == NULL) {
@@ -1708,8 +1710,7 @@ int main (int argc, char **argv)
     }
     luaL_openlibs(L);
 
-    lua_pushcfunction(L, new_listener);
-    lua_setglobal(L, "new_listener");
+    luaL_register(L, "myp", myp);
 
     if (luaL_dofile(L, "toast.lua")) {
         fprintf(stdout, "Could not run lua initializer!\n");
