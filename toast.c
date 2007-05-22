@@ -1406,7 +1406,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
                 break;
             default:
                 fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
-                assert(0);
+                assert(1 == 0);
             }
             }
             break;
