@@ -1393,6 +1393,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
                 c->mypstate = mys_sending_fields;
                 break;
             case COM_INIT_DB:
+            case COM_QUIT:
                 c->mypstate = mys_sending_ok;
                 break;
             default:
