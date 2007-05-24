@@ -1005,7 +1005,7 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
         perror("Could not malloc()");
         return NULL;
     }
-    memcpy(p->user, &c->rbuf[base], my_size);
+    memcpy(p->user, &c->rbuf[base], my_size + 1);
     /* +1 to account for the \0 */
     base += my_size + 1;
 
@@ -1013,22 +1013,24 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     /* If we don't have one, leave it all zeroes. */
     if (c->rbuf[base] > 0) {
         memcpy(&p->scramble_buff, &c->rbuf[base + 1], 21);
-        base += 20;
+        base += 21;
     } else {
         /* I guess this "filler" is only here if there's no scramble. */
         base++;
     }
 
-    my_size = strlen((const char *)&c->rbuf[base]);
-    p->databasename = (char *)malloc( my_size );
+    if (c->packetsize > base) {
+        my_size = strlen((const char *)&c->rbuf[base]);
+        p->databasename = (char *)malloc( my_size );
 
-    if (p->databasename == 0) {
-        perror("Could not malloc()");
-        return NULL;
+        if (p->databasename == 0) {
+            perror("Could not malloc()");
+            return NULL;
+        }
+        memcpy(p->databasename, &c->rbuf[base], my_size + 1);
+        /* +1 to account for the \0 */
+        base += my_size + 1;
     }
-    memcpy(p->databasename, &c->rbuf[base], my_size);
-    /* +1 to account for the \0 */
-    base += my_size + 1;
 
     fprintf(stdout, "***PACKET*** Client auth packet: %x\n%u\n%x\n%s\n%s\n", p->client_flags, p->max_packet_size, p->charset_number, p->user, p->databasename);
 
