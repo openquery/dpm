@@ -1689,6 +1689,8 @@ static int new_listener(lua_State *L)
     int l_socket = 0;
     const char *ip_addr = luaL_checkstring(L, 1);
     double port_num = luaL_checknumber(L, 2);
+
+    luaL_checktype(L, 3, LUA_TFUNCTION);
  
     if ( (l_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
@@ -1767,7 +1769,8 @@ int main (int argc, char **argv)
     luaL_register(L, "myp", myp);
 
     if (luaL_dofile(L, "toast.lua")) {
-        fprintf(stdout, "Could not run lua initializer!\n");
+        fprintf(stdout, "Could not run lua initializer: %s\n", lua_tostring(L, -1));
+        lua_pop(L, 1);
         return -1;
     }
 
