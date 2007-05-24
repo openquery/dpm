@@ -1,62 +1,27 @@
 PRACTICE:
 
+construct lua userdata object for connection structures
+pass userdata connection object into lua on creation. close connection on __gc.
+construct handshake/auth packet objects for lua
+pass handshake/auth into lua via callbacks
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
-fix username reading; add +1 to my_size so it gets the \0
 write packet-free routines. Clean up the memory leak I created.
 intercept and set flags properly for compression/prepare support disabling
 WORK ## implement mysql's password crypto handshake
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
-shuffle functions to be more in order
-move run_protocol and mysql specific 'stuff' to mysql.c
 move con and definition structures to toast.h
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 more libevent infrastructure; timers
 memory management; caching connection shit. malloc big range. reuse buffers.
-use multiple .c files to make the program.
 write a makefile
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 use struct buffer sizes from mysql_com.h
 
-Plans:
-
-As packets are processed, foward up into lua.
-call lua with tables: conn, packet
-
-It is lua's job to request backend connections.
-As new connections come in, lua can request a backend and attach two
-connections as a proxy at any point.
-get called at final packet of a request as well; can 'break' the proxy chain.
-try to do auth from within lua.
-bubble flags up to lua as tables.
-figure out the best way to differentiate flagsets from enumerations.
-run lua once at init.
-listening sockets should be established from lua?
-requests should know the listening socket for client connections...
-so: listen ip/port can signify something.
-otherwise use other features?
-Figure out if SQL comments can be sent to the server correctly...
-need ability to enqueue client events:
-
-client sends COM_QUERY request
-lua identifies and shelves the request packet in an internal array.
-lua builds an array of packets:
-'show status'
-'COM_QUERY'
-'show status'
-pops first request, executes. at end of execution lua returns with the same
-context. pop COM_QUERY, do same, pop show status, do same. compare results,
-log to file.
-
-schedule timer events from lua; 'come back with a reference to this
-table/state at this time' - could create a backend connection, and run SHOW
-PROCESSLIST once per second, reoccurring. No client needed...
-
-Unique connection id
-Stats tracking (?) (bytes, queries, uptime, etc)
-
+DONE ### fix username reading; add +1 to my_size so it gets the \0
+DONE ### use multiple .c files to make the program.
 DONE ### pull in as many GPL'ed defines as possible, write own for others.
 DONE ### create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
 DONE ### redo packet state machine to do proper state transitions when packets are _sent_ to a remote host.
