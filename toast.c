@@ -33,6 +33,8 @@
 
 /* Internal defines */
 
+#undef DBUG_STATE
+
 #define BUF_SIZE 2048
 
 /* Test pass-through variables. */
@@ -170,6 +172,7 @@ enum my_types {
  * FIXME: Header file? */
 typedef struct {
     int    fd;
+    uint64_t id; /* Unique id for struct. */
 
     struct event ev;
     short  ev_flags; /* only way to be able to read current flags? */
@@ -331,10 +334,10 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
 
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
+static int run_lua_callback(conn *c);
 
 /* Icky ewwy global vars. */
 
-//static int l_socket = 0; // server socket. duh :P
 static struct lua_State *L; // global lua state.
 
 /* Test outbound connection function */
@@ -590,10 +593,12 @@ static int handle_read(conn *c)
 static conn *init_conn(int newfd)
 {
     conn *newc;
+    static uint64_t id = 1; /* NOTE: Not positive if this should be global or not */
 
     /* client typedef init should be its own function */
     newc = (conn *)malloc( sizeof(conn) ); /* error handling */
     newc->fd = newfd;
+    newc->id = id++;
     newc->ev_flags = EV_READ | EV_PERSIST;
     newc->mystate = my_waiting;
     newc->mypstate = my_waiting;
@@ -1369,7 +1374,9 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 {
     int ret = 0;
 
+    #ifdef DBUG_STATE
     fprintf(stdout, "START State: %s\n", state_name[c->mypstate]);
+    #endif
     switch (c->my_type) {
     case my_client:
         /* Doesn't matter what we send to the client right now.
@@ -1413,7 +1420,10 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
         }
     }
 
+    #ifdef DBUG_STATE
     fprintf(stdout, "END State: %s\n", state_name[c->mypstate]);
+    #endif
+    run_lua_callback(c);
     return ret;
 }
 
@@ -1424,7 +1434,9 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 static int received_packet(conn *c, void **p, int *ptype, int field_count)
 {
     int ret = 0;
+    #ifdef DBUG_STATE
     fprintf(stdout, "START State: %s\n", state_name[c->mypstate]);
+    #endif
     switch (c->my_type) {
     case my_client:
         switch (c->mypstate) {
@@ -1524,7 +1536,11 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             c->mypstate = mys_wait_cmd;
         }
     }
+
+    #ifdef DBUG_STATE
     fprintf(stdout, "END State: %s\n", state_name[c->mypstate]);
+    #endif
+    run_lua_callback(c);
     return ret;
 }
 
@@ -1624,6 +1640,59 @@ static int run_protocol(conn *c, int read, int written)
     return 0;
 }
 
+/* Asserts that the stack is empty. */
+static void checkempty()
+{
+    int top = lua_gettop(L);
+    /*fprintf(stdout, "LUA STACK SIZE %d\n", top);*/
+    assert(top < 2);
+}
+
+/* Take present state value and attempt a lua callback.
+ * callbacks[conn->id][statename]->() in lua's own terms.
+ * if there is a "wait for state" value named, short circuit unless that state
+ * is matched.
+ */
+static int run_lua_callback(conn *c)
+{
+    int top = lua_gettop(L); /* Save so we may saw off the top later */
+    checkempty();
+
+    fprintf(stdout, "Running callback [%s] on conn id %llu\n", state_name[c->mypstate], (unsigned long long) c->id);
+
+    lua_getglobal(L, "callback");
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, top);
+        return 0;
+    }
+
+    /* First stage is to find the table of callbacks for this connection id */
+    lua_pushnumber(L, c->id);
+    lua_gettable(L, -2);
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, top);
+        return 0;
+    }
+
+    /* Now the top of the stack should be another table... */
+    lua_getfield(L, -1, state_name[c->mypstate]);
+
+    /* Now the top o' the stack ought to be a function. */
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, top);
+        return 0;
+    }
+
+    /* Finally, call the function? We should push some args too */
+    lua_pushnumber(L, c->id);
+    if (lua_pcall(L, 1, 0, 0) != 0) {
+        luaL_error(L, "Error running callback function: %s", lua_tostring(L, -1));
+    }
+    lua_settop(L, top);
+
+    checkempty();
+    return 0;
+}
 
 /* TODO: Should return an object lua can use to later destroy the listener.
  */
