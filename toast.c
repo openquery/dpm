@@ -880,8 +880,6 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     int base = c->readto + 4;
     size_t my_size = 0;
 
-    fprintf(stdout, "***PACKET*** parsing handshake packet.\n");
-
     /* Clear out the struct. */
     p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
     if (p == 0) {
@@ -965,8 +963,6 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     int base = c->readto + 4;
     size_t my_size = 0;
 
-    fprintf(stdout, "***PACKET*** parsing auth packet.\n");
-
     /* Clear out the struct. */
     p = (my_auth_packet *)malloc( sizeof(my_auth_packet) );
     if (p == 0) {
@@ -1043,8 +1039,6 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
     int base = c->readto + 4;
     uint64_t my_size = 0;
 
-    fprintf(stdout, "***PACKET*** parsing ok packet.\n");
-
     /* Clear out the struct. */
     p = (my_ok_packet *)malloc( sizeof(my_ok_packet) );
     if (p == 0) {
@@ -1091,8 +1085,6 @@ static my_err_packet *my_consume_err_packet(conn *c)
     my_err_packet *p;
     int base = c->readto + 4;
     size_t my_size = 0;
-
-    fprintf(stdout, "***PACKET*** parsing err packet.\n");
 
     /* Clear out the struct. */
     p = (my_err_packet *)malloc( sizeof(my_err_packet) );
@@ -1145,8 +1137,6 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
     int base = c->readto + 4;
     size_t my_size = 0;
 
-    fprintf(stdout, "***PACKET*** parsing cmd packet.\n");
-
     /* Clear out the struct. */
     p = (my_cmd_packet *)malloc( sizeof(my_cmd_packet) );
     if (p == 0) {
@@ -1181,8 +1171,6 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
     my_rset_packet *p;
     int base = c->readto + 4;
 
-    fprintf(stdout, "***PACKET*** parsing result set packet.\n");
-
     /* Clear out the struct. */
     p = (my_rset_packet *)malloc( sizeof(my_rset_packet) );
     if (p == 0) {
@@ -1212,8 +1200,6 @@ static my_field_packet *my_consume_field_packet(conn *c)
     int base = c->readto + 4;
     size_t my_size = 0;
     unsigned char *start_ptr;
-
-    fprintf(stdout, "***PACKET*** parsing field packet.\n");
 
     /* Clear out the struct. */
     p = (my_field_packet *)malloc( sizeof(my_field_packet) );
@@ -1320,8 +1306,6 @@ static int my_consume_row_packet(conn *c)
     //int base = c->readto + 4;
     int i = 0;
 
-    fprintf(stdout, "***PACKET*** parsing row packet.\n");
-
     for (i = 4; i < c->packetsize; i++) {
         fprintf(stdout, "%x ", c->rbuf[c->readto + i]);
     }
@@ -1342,9 +1326,7 @@ static my_eof_packet *my_consume_eof_packet(conn *c)
     my_eof_packet *p;
     int base = c->readto + 4;
  
-    fprintf(stdout, "***PACKET*** parsing EOF packet.\n");
-
-     /* Clear out the struct. */
+    /* Clear out the struct. */
     p = (my_eof_packet *)malloc( sizeof(my_eof_packet) );
     if (p == 0) {
         perror("Could not malloc()");
