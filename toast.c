@@ -1773,6 +1773,7 @@ int main (int argc, char **argv)
         lua_pop(L, 1);
         return -1;
     }
+    lua_pop(L, 1); /* Don't need to leave the table at the top of the stack */
 
     fprintf(stdout, "Starting event dispatcher...\n");
 
