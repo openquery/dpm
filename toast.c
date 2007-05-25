@@ -201,6 +201,11 @@ typedef struct {
     struct conn *remote;
 } conn;
 
+/* Weird self-referential struct. lightuserdata's not usable here. */
+typedef struct {
+    conn *c;
+} my_lua_conn;
+
 typedef struct {
     int ptype;
     void    (*free_me)(void *p);
@@ -593,12 +598,12 @@ static int handle_read(conn *c)
 static conn *init_conn(int newfd)
 {
     conn *newc;
-    static uint64_t id = 1; /* NOTE: Not positive if this should be global or not */
+    static int my_connection_counter = 1; /* NOTE: Not positive if this should be global or not */
 
     /* client typedef init should be its own function */
     newc = (conn *)malloc( sizeof(conn) ); /* error handling */
     newc->fd = newfd;
-    newc->id = id++;
+    newc->id = my_connection_counter++;
     newc->ev_flags = EV_READ | EV_PERSIST;
     newc->mystate = my_waiting;
     newc->mypstate = my_waiting;
@@ -1633,6 +1638,66 @@ static void checkempty()
     assert(top < 2);
 }
 
+/* _non_ lua centric connection object creatorabobble. */
+static int new_conn_obj(lua_State *L, conn *c)
+{
+    my_lua_conn *lc = (my_lua_conn *) lua_newuserdata(L, sizeof(my_lua_conn));
+    lc->c = c; /* :P */
+
+    luaL_getmetatable(L, "myp.conn");
+    lua_setmetatable(L, -2);
+
+    /* The userdata's on the stack. Call up to lua... */
+    return 1;
+}
+
+static int conn_obj_id(lua_State *L)
+{
+    my_lua_conn *lc = (my_lua_conn *)luaL_checkudata(L, 1, "myp.conn");
+
+    lua_pushinteger(L, lc->c->id);
+
+    return 1;
+}
+
+static int conn_obj_listener(lua_State *L)
+{
+    my_lua_conn *lc = (my_lua_conn *)luaL_checkudata(L, 1, "myp.conn");
+
+    lua_pushinteger(L, lc->c->listener);
+
+    return 1;
+}
+
+/* Registers connection object + methods into lua */
+static int register_conn_obj()
+{
+    /* "Global" new method. */
+/*    static const struct luaL_Reg conn_f [] = {
+        {"new_conn", new_conn_obj},
+        {NULL, NULL}
+    };*/
+    /* Object methods */
+    static const struct luaL_Reg conn_m [] = {
+        {"id", conn_obj_id},
+        {"listener", conn_obj_listener},
+        {NULL, NULL}
+    };
+
+    luaL_newmetatable(L, "myp.conn");
+
+    /* metatable.__index = metatable */
+    lua_pushvalue(L, -1); /* Create a copy to collapse into the metamethod */
+    lua_setfield(L, -2, "__index");
+
+    luaL_register(L, NULL, conn_m);
+    lua_pop(L, 1);
+/*    luaL_register(L, "myp", conn_f);
+    lua_pop(L, 1);*/
+
+    return 1;
+}
+
 /* Take present state value and attempt a lua callback.
  * callbacks[conn->id][statename]->() in lua's own terms.
  * if there is a "wait for state" value named, short circuit unless that state
@@ -1679,8 +1744,6 @@ static int run_lua_callback(conn *c)
     return 0;
 }
 
-/* TODO: Should return an object lua can use to later destroy the listener.
- */
 static int new_listener(lua_State *L)
 {
     struct sockaddr_in addr;
@@ -1690,8 +1753,6 @@ static int new_listener(lua_State *L)
     const char *ip_addr = luaL_checkstring(L, 1);
     double port_num = luaL_checknumber(L, 2);
 
-    luaL_checktype(L, 3, LUA_TFUNCTION);
- 
     if ( (l_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
         return -1;
@@ -1718,7 +1779,7 @@ static int new_listener(lua_State *L)
         return -1;
     }
 
-    listener = (conn *)malloc( sizeof(conn) ); /* error handling */
+    listener = init_conn(l_socket);
 
     listener->ev_flags = EV_READ | EV_PERSIST;
 
@@ -1727,7 +1788,9 @@ static int new_listener(lua_State *L)
     event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
     event_add(&listener->ev, NULL);
 
-    return 0;
+    new_conn_obj(L, listener);
+
+    return 1;
 }
 
 int main (int argc, char **argv)
@@ -1767,6 +1830,7 @@ int main (int argc, char **argv)
     luaL_openlibs(L);
 
     luaL_register(L, "myp", myp);
+    register_conn_obj();
 
     if (luaL_dofile(L, "toast.lua")) {
         fprintf(stdout, "Could not run lua initializer: %s\n", lua_tostring(L, -1));

@@ -9,11 +9,7 @@ end
 
 -- it's a comment!
 print "Hello from lua world!"
-myp.listener("127.0.0.1", 5500, setup_listener)
-print "Set up new listener!"
+listen = myp.listener("127.0.0.1", 5500)
+print("Set up new listener!", type(listen), listen:id(), listen:listener())
 
-function say_hello (c)
-    print "Got hello callback! Whee!"
-end
-
-callback[2] = {["Server waiting auth"] = say_hello}
+callback[listen:id()] = {["Client Connect"] = new_client}
