@@ -1,9 +1,29 @@
 PRACTICE:
 
-construct lua userdata object for connection structures
-pass userdata connection object into lua on creation. close connection on __gc.
-construct handshake/auth packet objects for lua
-pass handshake/auth into lua via callbacks
+stages to client auth:
+ - on handle of new client, create handshake packet object
+   ( requires client object, handshake packet object )
+ - Set callback handler for auth return
+ - Write handshake packet to wire
+ - Upon auth return, receive conn obj and auth pkt
+ - C call for checking the scramble stage against an argument string
+   (PASSWORD("whatever") hash)
+ - support for __gc to close a connection (or setting it to nil) (TODO: Shit proper error to wire)
+
+stages to server auth:
+ - request new outbound connection: outbound = new_backend("ip", port)
+   ( 'outbound' is a conn struct )
+ - register callback for handshake packet return
+ - parse handshake packet, create auth packet object
+ - C call for setting scramble for auth packet object
+ - Write auth packet to wire
+ - Callback on waiting auth result. handle OK or ERR
+
+At this stage, client or server should be authenticated. register proper
+callbacks. fill in the holes.
+
+BONUS: Filter flags out of client abilities that we can't handle.
+
 need a "verify" conn obj method that barfs if client conn was closed
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows

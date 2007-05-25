@@ -1427,7 +1427,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 /* If we received a packet, we don't necessarily know what it is.
  * So *p can be NULL and ptype can be 0 (myp_unknown).
  */
- /* NOTE: This means the packet was receive _ON_ the wire for this conn */
+ /* NOTE: This means the packet was received _ON_ the wire for this conn */
 static int received_packet(conn *c, void **p, int *ptype, int field_count)
 {
     int ret = 0;
