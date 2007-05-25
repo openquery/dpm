@@ -339,8 +339,9 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
 
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
-static int run_lua_callback(conn *c);
+static int run_lua_callback(conn *c, int nargs);
 
+static int new_conn_obj(lua_State *L, conn *c);
 /* Icky ewwy global vars. */
 
 static struct lua_State *L; // global lua state.
@@ -683,6 +684,12 @@ static void handle_event(int fd, short event, void *arg)
 
         newc->mypstate  = myc_wait_handshake;
         newc->my_type   = my_client;
+        
+        /* Pass the object up into lua for later inspection. */
+        new_conn_obj(L, newc);
+
+        c->mypstate = myc_connect;
+        run_lua_callback(c, 1);
         return;
    }
    
@@ -1413,7 +1420,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     #ifdef DBUG_STATE
     fprintf(stdout, "END State: %s\n", state_name[c->mypstate]);
     #endif
-    run_lua_callback(c);
+    run_lua_callback(c, 0);
     return ret;
 }
 
@@ -1530,7 +1537,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     #ifdef DBUG_STATE
     fprintf(stdout, "END State: %s\n", state_name[c->mypstate]);
     #endif
-    run_lua_callback(c);
+    run_lua_callback(c, 0);
     return ret;
 }
 
@@ -1630,14 +1637,6 @@ static int run_protocol(conn *c, int read, int written)
     return 0;
 }
 
-/* Asserts that the stack is empty. */
-static void checkempty()
-{
-    int top = lua_gettop(L);
-    /*fprintf(stdout, "LUA STACK SIZE %d\n", top);*/
-    assert(top < 2);
-}
-
 /* _non_ lua centric connection object creatorabobble. */
 static int new_conn_obj(lua_State *L, conn *c)
 {
@@ -1703,10 +1702,9 @@ static int register_conn_obj()
  * if there is a "wait for state" value named, short circuit unless that state
  * is matched.
  */
-static int run_lua_callback(conn *c)
+static int run_lua_callback(conn *c, int nargs)
 {
     int top = lua_gettop(L); /* Save so we may saw off the top later */
-    checkempty();
 
     fprintf(stdout, "Running callback [%s] on conn id %llu\n", state_name[c->mypstate], (unsigned long long) c->id);
 
@@ -1733,14 +1731,18 @@ static int run_lua_callback(conn *c)
         return 0;
     }
 
+    /* Do the argument shuffle! */
+    lua_insert(L, 1);
+    /* Function's on the bottom, but two levels of callback table are above.
+     * so pop them out and we should have the right order. */
+    lua_pop(L, 2);
+
     /* Finally, call the function? We should push some args too */
-    lua_pushnumber(L, c->id);
-    if (lua_pcall(L, 1, 0, 0) != 0) {
+    if (lua_pcall(L, nargs, 0, 0) != 0) {
         luaL_error(L, "Error running callback function: %s", lua_tostring(L, -1));
     }
-    lua_settop(L, top);
+    lua_settop(L, top - nargs);
 
-    checkempty();
     return 0;
 }
 
@@ -1825,7 +1827,7 @@ int main (int argc, char **argv)
 
     if (L == NULL) {
         fprintf(stderr, "Could not create lua state\n");
-        exit(-1);
+        return -1;
     }
     luaL_openlibs(L);
 
