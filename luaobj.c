@@ -14,8 +14,8 @@ static int obj_int(lua_State *L, void *var);
 static int obj_uint64_t(lua_State *L, void *var);
 
 static const obj_reg conn_regs [] = {
-    {"id", obj_uint64_t, 1, offsetof(conn, id)},
-    {"listener", obj_int, 1, offsetof(conn, listener)},
+    {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id)},
+    {"listener", obj_int, LO_READONLY, offsetof(conn, listener)},
     {NULL, NULL, 0, 0},
 };
 
@@ -38,11 +38,11 @@ static void dump_stack()
 
 static int obj_int(lua_State *L, void *var)
 {
-    if (lua_gettop(L) > 1) {
-        fprintf(stdout, "Don't support setting ints yet.\n");
-        //*(int *)var = luaL_checkint(L, 3);
-    } else {
+    if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(int*)var);
+    } else {
+        *(int *)var = luaL_checkint(L, 2);
+        return 0;
     }
 
     return 1;
@@ -50,11 +50,11 @@ static int obj_int(lua_State *L, void *var)
 
 static int obj_uint64_t(lua_State *L, void *var)
 {
-    if (lua_gettop(L) > 1) {
-        fprintf(stdout, "Don't support setting ints yet.\n");
-        //*(int *)var = luaL_checkint(L, 3);
-    } else {
+    if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(uint64_t*)var);
+    } else {
+        *(uint64_t *)var = (uint64_t)luaL_checkinteger(L, 2);
+        return 0;
     }
 
     return 1;
@@ -101,7 +101,11 @@ static int obj_index(lua_State *L)
     if (lua_islightuserdata(L, -1)) {
         obj_reg *f = (obj_reg *)lua_touserdata(L, -1);
         lua_pop(L, 1);
-        return f->func(L, lua_touserdata(L, -1) + f->offset1);
+        /* We must test for rw perms here */
+        if (f->type == LO_READONLY && lua_gettop(L) > 1) {
+            luaL_error(L, "Value is read only");
+        }
+        return f->func(L, lua_touserdata(L, 1) + f->offset1);
     } else {
         luaL_error(L, "Not a light user data object... [%s]", lua_typename(L, lua_type(L, lua_upvalueindex(1))));
     }

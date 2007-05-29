@@ -1,10 +1,11 @@
 PRACTICE:
 
-flesh out obj_index to handle read/write correctly.
-add read/write defines
+DONE ### flesh out obj_index to handle read/write correctly.
+DONE ### add read/write defines
 create working accessors for int, uint64_t, uint32_t, enum flag, bit flag
 create working accessors for uint16_t, uint8_t, null terminated strings
 create working accessor for length encoded strings
+attach __gc methods to free objects
 
 stages to client auth:
  - on handle of new client, create handshake packet object

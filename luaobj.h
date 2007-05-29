@@ -5,6 +5,9 @@
 
 typedef int (*obj_func) (lua_State *L, void *var);
 
+#define LO_READONLY 0
+#define LO_READWRITE 1
+
 typedef const struct {
     const char *name; /* table index name */
     obj_func    func; /* Crazy object function type */
