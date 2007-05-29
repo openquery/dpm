@@ -53,6 +53,8 @@ static int obj_uint64_t(lua_State *L, void *var)
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(uint64_t*)var);
     } else {
+        /* FIXME: Casting a signed int to an unsigned with no checks is insane
+         */
         *(uint64_t *)var = (uint64_t)luaL_checkinteger(L, 2);
         return 0;
     }
