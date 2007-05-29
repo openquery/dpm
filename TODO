@@ -1,6 +1,10 @@
 PRACTICE:
 
-create accessor library for objects
+flesh out obj_index to handle read/write correctly.
+add read/write defines
+create working accessors for int, uint64_t, uint32_t, enum flag, bit flag
+create working accessors for uint16_t, uint8_t, null terminated strings
+create working accessor for length encoded strings
 
 stages to client auth:
  - on handle of new client, create handshake packet object
@@ -34,7 +38,6 @@ intercept and set flags properly for compression/prepare support disabling
 WORK ## implement mysql's password crypto handshake
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
-move con and definition structures to toast.h
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 more libevent infrastructure; timers
 memory management; caching connection shit. malloc big range. reuse buffers.
@@ -43,6 +46,7 @@ not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 use struct buffer sizes from mysql_com.h
 
+DONE ### move con and definition structures to toast.h
 DONE ### fix username reading; add +1 to my_size so it gets the \0
 DONE ### use multiple .c files to make the program.
 DONE ### pull in as many GPL'ed defines as possible, write own for others.
