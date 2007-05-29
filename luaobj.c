@@ -34,6 +34,8 @@ static void dump_stack()
     }
 }
 
+/* Accessor functions */
+
 static int obj_int(lua_State *L, void *var)
 {
     if (lua_gettop(L) > 1) {
@@ -58,6 +60,10 @@ static int obj_uint64_t(lua_State *L, void *var)
     return 1;
 }
 
+/* Object construction functions... */
+
+/* Here we add specific object accessors into a metatable. Using C closures to
+ * easily pull the struct back in on callback. */
 static void obj_add(lua_State *L, obj_reg *r)
 {
     for (; r->name; r++) {
@@ -80,6 +86,9 @@ int new_conn_obj(lua_State *L, conn *c)
     return 1;
 }
 
+/* Pseudo index function called on every access. This guy parses out the
+ * accessor struct, handles read/write protectiveness, and makes the official
+ * accessor call. */
 static int obj_index(lua_State *L)
 {
     if (!lua_isuserdata(L, 1)) {
@@ -100,7 +109,7 @@ static int obj_index(lua_State *L)
     return 0;
 }
 
-/* Registers connection object + methods into lua */
+/* Registers connection object + methods, defined at top, into lua */
 int register_obj_types(lua_State *L)
 {
     obj_toreg *r = regs;
