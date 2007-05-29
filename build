@@ -1,6 +1,12 @@
 #!/bin/bash
 
-rm -f toast toast.o sha1.o
-gcc -g -Wall -Wextra -Wno-unused-parameter -c sha1.c
-gcc -g -Wall -Wextra -Wno-unused-parameter -c toast.c
-gcc -g -Wall -Wextra -Wno-unused-parameter -o toast toast.o sha1.o -levent -llua
+args="-Wall -Wextra -Wno-unused-parameter"
+
+echo "Cleaning..."
+rm -f toast toast.o sha1.o luaobj.o
+echo "Compiling..."
+gcc -g $args -c sha1.c
+gcc -g $args -c luaobj.c
+gcc -g $args -c toast.c
+echo "Linking..."
+gcc -g $args -o toast toast.o sha1.o luaobj.o -levent -llua

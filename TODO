@@ -1,5 +1,7 @@
 PRACTICE:
 
+create accessor library for objects
+
 stages to client auth:
  - on handle of new client, create handshake packet object
    ( requires client object, handshake packet object )
