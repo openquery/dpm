@@ -20,6 +20,7 @@ static int obj_uint8_t(lua_State *L, void *var);
 static const obj_reg conn_regs [] = {
     {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id)},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener)},
+    {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type)},
     {NULL, NULL, 0, 0},
 };
 
