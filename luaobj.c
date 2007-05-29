@@ -5,6 +5,7 @@
 
 /* Forward declarations */
 static void dump_stack();
+static int tmp_gc(lua_State *L);
 
 static int  obj_index(lua_State *L);
 static void obj_add(lua_State *L, obj_reg *r);
@@ -19,10 +20,21 @@ static const obj_reg conn_regs [] = {
     {NULL, NULL, 0, 0},
 };
 
-static const obj_toreg regs [] = {
-    {"myp.conn", conn_regs},
-    {NULL, NULL},
+static const luaL_Reg conn_m [] = {
+    {"__gc", tmp_gc},
+    {NULL, NULL}
 };
+
+static const obj_toreg regs [] = {
+    {"myp.conn", conn_regs, conn_m},
+    {NULL, NULL, NULL},
+};
+
+static int tmp_gc(lua_State *L)
+{
+    fprintf(stdout, "Tried to garbage collect something.\n");
+    return 0;
+}
 
 static void dump_stack()
 {
@@ -121,6 +133,7 @@ int register_obj_types(lua_State *L)
     obj_toreg *r = regs;
     for (; r->name; r++) {
         luaL_newmetatable(L, r->name);
+        luaL_register(L, NULL, r->methods);
         obj_add(L, r->accessors); /* Push it, push it real good. */
         /* metatable.__index = metatable */
         lua_pushvalue(L, -1); /* Create a copy to fold into the metamethod */

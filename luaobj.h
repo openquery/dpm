@@ -10,14 +10,15 @@ typedef int (*obj_func) (lua_State *L, void *var);
 
 typedef const struct {
     const char *name; /* table index name */
-    obj_func    func; /* Crazy object function type */
-    int         type; /* 0 ro 1 rwr */
-    size_t      offset1; /* Offset of the first variable */
+    obj_func    func; /* crazy object function type */
+    int         type; /* r/w flags */
+    size_t      offset1; /* offset of the first variable */
 } obj_reg;
 
 typedef const struct {
     const char *name; /* metatable name (object type) */
-    obj_reg    *accessors; /* array of accessors. */
+    const obj_reg    *accessors; /* array of indirect accessors. */
+    const luaL_Reg   *methods; /* array of direct methods. */
 } obj_toreg;
 
 int register_obj_types(lua_State *L);
