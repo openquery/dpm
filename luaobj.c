@@ -12,6 +12,7 @@ static void obj_add(lua_State *L, obj_reg *r);
 
 /* Accessors */
 static int obj_int(lua_State *L, void *var);
+static int obj_enum(lua_State *L, void *var);
 static int obj_uint64_t(lua_State *L, void *var);
 static int obj_uint32_t(lua_State *L, void *var);
 static int obj_uint16_t(lua_State *L, void *var);
@@ -51,6 +52,19 @@ static void dump_stack()
 }
 
 /* Accessor functions */
+
+/* It's just an int... we can do bounds checking sometime. */
+static int obj_enum(lua_State *L, void *var)
+{
+    if (lua_gettop(L) < 2) {
+        lua_pushinteger(L, *(int*)var);
+    } else {
+        *(int *)var = luaL_checkint(L, 2);
+        return 0;
+    }
+
+    return 1;
+}
 
 static int obj_int(lua_State *L, void *var)
 {
