@@ -13,6 +13,9 @@ static void obj_add(lua_State *L, obj_reg *r);
 /* Accessors */
 static int obj_int(lua_State *L, void *var);
 static int obj_uint64_t(lua_State *L, void *var);
+static int obj_uint32_t(lua_State *L, void *var);
+static int obj_uint16_t(lua_State *L, void *var);
+static int obj_uint8_t(lua_State *L, void *var);
 
 static const obj_reg conn_regs [] = {
     {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id)},
@@ -68,6 +71,48 @@ static int obj_uint64_t(lua_State *L, void *var)
         /* FIXME: Casting a signed int to an unsigned with no checks is insane
          */
         *(uint64_t *)var = (uint64_t)luaL_checkinteger(L, 2);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int obj_uint32_t(lua_State *L, void *var)
+{
+    if (lua_gettop(L) < 2) {
+        lua_pushinteger(L, *(uint32_t*)var);
+    } else {
+        /* FIXME: Casting a signed int to an unsigned with no checks is insane
+         */
+        *(uint32_t *)var = (uint32_t)luaL_checkinteger(L, 2);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int obj_uint16_t(lua_State *L, void *var)
+{
+    if (lua_gettop(L) < 2) {
+        lua_pushinteger(L, *(uint16_t*)var);
+    } else {
+        /* FIXME: Casting a signed int to an unsigned with no checks is insane
+         */
+        *(uint16_t *)var = (uint16_t)luaL_checkinteger(L, 2);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int obj_uint8_t(lua_State *L, void *var)
+{
+    if (lua_gettop(L) < 2) {
+        lua_pushinteger(L, *(uint8_t*)var);
+    } else {
+        /* FIXME: Casting a signed int to an unsigned with no checks is insane
+         */
+        *(uint8_t *)var = (uint8_t)luaL_checkinteger(L, 2);
         return 0;
     }
 
