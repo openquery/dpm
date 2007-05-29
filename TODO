@@ -1,12 +1,5 @@
 PRACTICE:
 
-DONE ### flesh out obj_index to handle read/write correctly.
-DONE ### add read/write defines
-create working accessors for int, uint64_t, uint32_t, enum flag, bit flag
-create working accessors for uint16_t, uint8_t, null terminated strings
-create working accessor for length encoded strings
-WORK ## attach __gc methods to free objects
-
 stages to client auth:
  - on handle of new client, create handshake packet object
    ( requires client object, handshake packet object )
@@ -46,6 +39,13 @@ write a makefile
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 use struct buffer sizes from mysql_com.h
+
+DONE ### flesh out obj_index to handle read/write correctly.
+DONE ### add read/write defines
+DONE ## create working accessors for int, uint64_t, uint32_t, enum flag, bit flag
+WORK ## create working accessors for uint16_t, uint8_t, null terminated strings
+WORK ## create working accessor for length encoded strings
+WORK ## attach __gc methods to free objects
 
 DONE ### move con and definition structures to toast.h
 DONE ### fix username reading; add +1 to my_size so it gets the \0

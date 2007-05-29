@@ -11,19 +11,21 @@ static int  obj_index(lua_State *L);
 static void obj_add(lua_State *L, obj_reg *r);
 
 /* Accessors */
-static int obj_int(lua_State *L, void *var);
-static int obj_enum(lua_State *L, void *var);
-static int obj_flags(lua_State *L, void *var);
-static int obj_uint64_t(lua_State *L, void *var);
-static int obj_uint32_t(lua_State *L, void *var);
-static int obj_uint16_t(lua_State *L, void *var);
-static int obj_uint8_t(lua_State *L, void *var);
+static int obj_int(lua_State *L, void *var, void *var2);
+static int obj_enum(lua_State *L, void *var, void *var2);
+static int obj_flags(lua_State *L, void *var, void *var2);
+static int obj_string(lua_State *L, void *var, void *var2);
+static int obj_lstring(lua_State *L, void *var, void *var2);
+static int obj_uint64_t(lua_State *L, void *var, void *var2);
+static int obj_uint32_t(lua_State *L, void *var, void *var2);
+static int obj_uint16_t(lua_State *L, void *var, void *var2);
+static int obj_uint8_t(lua_State *L, void *var, void *var2);
 
 static const obj_reg conn_regs [] = {
-    {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id)},
-    {"listener", obj_int, LO_READONLY, offsetof(conn, listener)},
-    {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type)},
-    {NULL, NULL, 0, 0},
+    {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id), 0},
+    {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
+    {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type), 0},
+    {NULL, NULL, 0, 0, 0},
 };
 
 static const luaL_Reg conn_m [] = {
@@ -53,12 +55,34 @@ static void dump_stack()
 }
 
 /* Accessor functions */
+static int obj_lstring(lua_State *L, void *var, void *var2)
+{
+    if (lua_gettop(L) < 2) {
+        lua_pushlstring(L, (char *)var, *(uint64_t *)var2);
+    } else {
+        luaL_error(L, "Dynamic length variables are presently read-only");
+    }
+
+    return 1;
+}
+
+/* Sends \0 terminated strings to to/from lua */
+static int obj_string(lua_State *L, void *var, void *var2)
+{
+    if (lua_gettop(L) < 2) {
+        lua_pushstring(L, (char *)var);
+    } else {
+        luaL_error(L, "String functions are presently read-only");
+    }
+
+    return 1;
+}
 
 /* Sets/returns bit flags within a value. 
  * If one arg, returns flag val. If two arg, sets flag to a boolean of second
  * arg.
  */
-static int obj_flags(lua_State *L, void *var)
+static int obj_flags(lua_State *L, void *var, void *var2)
 {
     int flag = 0;
     int top = lua_gettop(L);
@@ -87,7 +111,7 @@ static int obj_flags(lua_State *L, void *var)
 }
 
 /* It's just an int... we can do bounds checking sometime. */
-static int obj_enum(lua_State *L, void *var)
+static int obj_enum(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(int*)var);
@@ -99,7 +123,7 @@ static int obj_enum(lua_State *L, void *var)
     return 1;
 }
 
-static int obj_int(lua_State *L, void *var)
+static int obj_int(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(int*)var);
@@ -111,7 +135,7 @@ static int obj_int(lua_State *L, void *var)
     return 1;
 }
 
-static int obj_uint64_t(lua_State *L, void *var)
+static int obj_uint64_t(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(uint64_t*)var);
@@ -125,7 +149,7 @@ static int obj_uint64_t(lua_State *L, void *var)
     return 1;
 }
 
-static int obj_uint32_t(lua_State *L, void *var)
+static int obj_uint32_t(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(uint32_t*)var);
@@ -139,7 +163,7 @@ static int obj_uint32_t(lua_State *L, void *var)
     return 1;
 }
 
-static int obj_uint16_t(lua_State *L, void *var)
+static int obj_uint16_t(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(uint16_t*)var);
@@ -153,7 +177,7 @@ static int obj_uint16_t(lua_State *L, void *var)
     return 1;
 }
 
-static int obj_uint8_t(lua_State *L, void *var)
+static int obj_uint8_t(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushinteger(L, *(uint8_t*)var);
@@ -212,7 +236,7 @@ static int obj_index(lua_State *L)
         if (f->type == LO_READONLY && lua_gettop(L) > 1) {
             luaL_error(L, "Value is read only");
         }
-        return f->func(L, lua_touserdata(L, 1) + f->offset1);
+        return f->func(L, lua_touserdata(L, 1) + f->offset1, f->offset2 ? lua_touserdata(L, 1) + f->offset2 : 0);
     } else {
         luaL_error(L, "Not a light user data object... [%s]", lua_typename(L, lua_type(L, lua_upvalueindex(1))));
     }
