@@ -13,6 +13,7 @@ static void obj_add(lua_State *L, obj_reg *r);
 /* Accessors */
 static int obj_int(lua_State *L, void *var);
 static int obj_enum(lua_State *L, void *var);
+static int obj_flags(lua_State *L, void *var);
 static int obj_uint64_t(lua_State *L, void *var);
 static int obj_uint32_t(lua_State *L, void *var);
 static int obj_uint16_t(lua_State *L, void *var);
@@ -52,6 +53,38 @@ static void dump_stack()
 }
 
 /* Accessor functions */
+
+/* Sets/returns bit flags within a value. 
+ * If one arg, returns flag val. If two arg, sets flag to a boolean of second
+ * arg.
+ */
+static int obj_flags(lua_State *L, void *var)
+{
+    int flag = 0;
+    int top = lua_gettop(L);
+    if (top < 2) {
+        luaL_error(L, "Must specify a flag to retrieve or set");
+    } else if (top == 2) {
+        /* This should be a flag fetch. */
+        flag = luaL_checkint(L, 2);
+        lua_pushboolean(L, *(int *)var & flag);
+    } else if (top == 3) {
+        /* This should be a flag set. */
+        flag = luaL_checkint(L, 2);
+
+        if (lua_toboolean(L, 3)) {
+            *(int *)var |= flag;
+        } else {
+            *(int *)var &= ~flag;
+        }
+
+        return 0;
+    } else {
+        luaL_error(L, "Flags need only FLAG, BOOLEAN as arguments");
+    }
+
+    return 1;
+}
 
 /* It's just an int... we can do bounds checking sometime. */
 static int obj_enum(lua_State *L, void *var)
