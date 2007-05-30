@@ -3,7 +3,7 @@
 args="-Wall -Wextra -Wno-unused-parameter"
 
 echo "Cleaning..."
-rm -f toast toast.o sha1.o luaobj.o
+rm -f *.o toast
 echo "Compiling..."
 gcc -g $args -c sha1.c
 gcc -g $args -c luaobj.c
