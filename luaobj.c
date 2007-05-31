@@ -206,11 +206,11 @@ static void obj_add(lua_State *L, obj_reg *r)
 }
 
 /* _non_ lua centric connection object creatorabobble. */
-int new_conn_obj(lua_State *L, conn *c)
+int new_obj(lua_State *L, void *p, const char *type)
 {
-    lua_pushlightuserdata(L, (void *)c);
+    lua_pushlightuserdata(L, p);
 
-    luaL_getmetatable(L, "myp.conn");
+    luaL_getmetatable(L, type);
     lua_setmetatable(L, -2);
 
     /* The userdata's on the stack. Call up to lua... */

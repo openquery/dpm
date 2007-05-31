@@ -401,7 +401,7 @@ static void handle_event(int fd, short event, void *arg)
         newc->my_type   = my_client;
         
         /* Pass the object up into lua for later inspection. */
-        new_conn_obj(L, newc);
+        new_obj(L, newc, "myp.conn");
 
         c->mypstate = myc_connect;
         run_lua_callback(c, 1);
@@ -1445,7 +1445,7 @@ static int new_listener(lua_State *L)
     event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
     event_add(&listener->ev, NULL);
 
-    new_conn_obj(L, listener);
+    new_obj(L, listener, "myp.conn");
 
     return 1;
 }

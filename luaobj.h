@@ -23,6 +23,6 @@ typedef const struct {
 } obj_toreg;
 
 int register_obj_types(lua_State *L);
-int new_conn_obj(lua_State *L, conn *c);
+int new_obj(lua_State *L, void *p, const char *type);
 
 #endif /* LUAOBJ_H */
