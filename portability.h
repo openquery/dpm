@@ -102,7 +102,7 @@ typedef long        int32;
 #endif
 typedef unsigned long    uint32; /* Short for unsigned integer >= 32 bits */
 #else
-#define FUBAR
+typedef uint32_t    uint32; /* see above :\ - Dormando */
 #endif
 
 #if !defined(HAVE_ULONG) && !defined(__USE_MISC)

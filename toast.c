@@ -596,7 +596,7 @@ static void my_consume_header(conn *c)
 {
     int base = 0;
     base = c->readto;
-    c->packetsize = (c->rbuf[base]) | (c->rbuf[base + 1] << 8) | (c->rbuf[base + 2] << 16);
+    c->packetsize = uint3korr(&c->rbuf[base]);
     c->packetsize += 4; /* Add in the original header len */
 }
 
@@ -693,21 +693,20 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     /* TODO: I think technically I can do this with one memcpy. */
 
     /* 4 byte thread id */
-    memcpy(&p->thread_id, &c->rbuf[base], 4);
+    p->thread_id = uint4korr(&c->rbuf[base]);
     base += 4;
 
     /* First 8 bytes of scramble_buff. Sandwich with 12 more + \0 later */
     memcpy(&p->scramble_buff, &c->rbuf[base], 8);
     base += 8;
 
-    /* Should be 0 */
-    p->filler1 = c->rbuf[base];
+    /* filler1 should be 0 */
     base++;
 
     /* Set of flags for server caps. */
     /* TODO: Need to explicitly disable compression, ssl, other features we
      * don't support. */
-    memcpy(&p->server_capabilities, &c->rbuf[base], 2);
+    p->server_capabilities = uint2korr(&c->rbuf[base]);
     base += 2;
 
     /* Language setting. Pass-through and/or ignore. */
@@ -715,18 +714,15 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     base++;
 
     /* Server status flags. AUTOCOMMIT flags and such? */
-    memcpy(&p->server_status, &c->rbuf[base], 2);
+    p->server_status = uint2korr(&c->rbuf[base]);
     base += 2;
 
-    /* More zeroes? */
-    memcpy(&p->filler2, &c->rbuf[base], 13);
+    /* More zeroes. */
     base += 13;
 
     /* Rest of random number "string" */
     memcpy(&p->scramble_buff[8], &c->rbuf[base], 13);
     base += 13;
-
-    fprintf(stdout, "***PACKET*** Handshake packet: %x\n%s\n%x\n%x\n%x\n", p->protocol_version, p->server_version, p->thread_id, p->filler1, p->server_capabilities);
 
     return p;
 }
