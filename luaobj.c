@@ -205,7 +205,7 @@ static void obj_add(lua_State *L, obj_reg *r)
     }
 }
 
-/* _non_ lua centric connection object creatorabobble. */
+/* _non_ lua centric object creatorabobble. */
 int new_obj(lua_State *L, void *p, const char *type)
 {
     lua_pushlightuserdata(L, p);

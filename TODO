@@ -1,5 +1,10 @@
 PRACTICE:
 
+write C outbound_connect
+add to lua (return conn object)
+add "attach to" C call for lua for attaching a proxy
+have lua make backend connects and attach
+
 stages to client auth:
  - on handle of new client, create handshake packet object
    ( requires client object, handshake packet object )

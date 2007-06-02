@@ -21,6 +21,8 @@ const char *my_state_name[]={
 
 struct lua_State *L;
 
+int urandom_sock = 0;
+
 /* Declarations */
 static void sig_hup(const int sig);
 int set_sock_nonblock(int fd);
@@ -598,6 +600,53 @@ static void my_consume_header(conn *c)
     c->packetsize += 4; /* Add in the original header len */
 }
 
+/* TODO: In another life this should be some crazy struct buffer. */
+static void my_free_handshake_packet(void *p, conn *c)
+{
+    /* No allocated memory, easy. */
+    free(p);
+}
+
+/* Takes handshake packet *p and writes as a packet into c's write buffer. */
+static int my_wire_handshake_packet(my_handshake_packet *p, conn *c)
+{
+    int psize = 0;
+
+    /* We must discover the length of the packet first, so we can size the
+     * buffer. For a handshake packet, it's 45 bytes :)
+     */
+
+    return psize + 4;
+}
+
+/* Creates an "empty" handshake packet */
+static my_handshake_packet *my_new_handshake_packet()
+{
+    my_handshake_packet *p;
+ 
+    p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_handshake_packet));
+
+    p->h.ptype = myp_handshake;
+    p->protocol_version = 10; /* FIXME: Should be a define? */
+    strcpy(p->server_version, "Dormando DBProxy 0.0.0"); /* :P */
+    p->thread_id = 1; /* Who cares. */
+    p->server_capabilities = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION;
+    p->server_language = 1;
+    p->server_status = SERVER_STATUS_AUTOCOMMIT;
+   
+    if (read(urandom_sock, p->scramble_buff, 20) < 20) {
+        perror("Could not read 20 bytes from /dev/urandom for scramble");
+        return NULL;
+    }
+
+    return p;
+}
+
 /* FIXME: If we have the second scramblebuff, it needs to be assembled
  * into a single line for processing.
  */
@@ -629,15 +678,17 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
 
     /* Server version string. Crappy malloc. */
     my_size = strlen((const char *)&c->rbuf[base]);
-    p->server_version = (char *)malloc( my_size );
 
-    if (p->server_version == 0) {
-        perror("Could not malloc()");
+    /* +1 to account for the \0 */
+    my_size++;
+
+    if (my_size > SERVER_VERSION_LENGTH) {
+        fprintf(stderr, "Server version string is too long! Closing.\n");
         return NULL;
     }
+
     memcpy(p->server_version, &c->rbuf[base], my_size);
-    /* +1 to account for the \0 */
-    base += my_size + 1;
+    base += my_size;
 
     /* TODO: I think technically I can do this with one memcpy. */
 
@@ -1459,6 +1510,12 @@ int main (int argc, char **argv)
     };
 
     fprintf(stdout, "Starting up...\n");
+
+    /* Init /dev/urandom socket... */
+    if( (urandom_sock = open("/dev/urandom", O_RDONLY)) == -1) {
+        perror("Opening /dev/urandom");
+        return -1;
+    }
 
     /* Initialize the event system. */
     event_init();

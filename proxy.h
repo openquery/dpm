@@ -31,6 +31,9 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+/* Public domain MySQL defines from mysqlnd's portability.h */
+#include "portability.h"
+
 /* MySQL defines from mysql_com.h - It's GPL! */
 #define SERVER_STATUS_IN_TRANS     1    /* Transaction has started */
 #define SERVER_STATUS_AUTOCOMMIT   2    /* Server in auto_commit mode */
@@ -186,11 +189,6 @@ typedef struct {
     struct conn *remote;
 } conn;
 
-/* Weird self-referential struct. lightuserdata's not usable here. */
-typedef struct {
-    conn *c;
-} my_lua_conn;
-
 typedef struct {
     int ptype;
     void    (*free_me)(void *p);
@@ -200,7 +198,7 @@ typedef struct {
 typedef struct {
     my_packet_header h;
     uint8_t        protocol_version;
-    char          *server_version;
+    char           server_version[SERVER_VERSION_LENGTH];
     uint32_t       thread_id;
     char           scramble_buff[21]; /* NULL terminated, for some reason. */
     uint8_t        filler1; /* Should always be 0x00 */
