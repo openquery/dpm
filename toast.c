@@ -16,7 +16,7 @@
 #define MY_PORT 3306
 
 const char *my_state_name[]={
-    "Server connect", "Client connect", "Server sent handshake", "Client wait ha ndshake", "Client waiting", "Server Waiting", "Client sent command", "Server sen ding fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake",
+    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sen ding fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake",
 };
 
 struct lua_State *L;
@@ -1552,7 +1552,6 @@ int main (int argc, char **argv)
         lua_pop(L, 1);
         return -1;
     }
-    lua_pop(L, 1); /* Don't need to leave the table at the top of the stack */
 
     fprintf(stdout, "Starting event dispatcher...\n");
 

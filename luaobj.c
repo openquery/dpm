@@ -222,10 +222,8 @@ int new_obj(lua_State *L, void *p, const char *type)
 {
     void **u = (void **)lua_newuserdata(L, sizeof(void **));
     *u = p;
-
     luaL_getmetatable(L, type);
     lua_setmetatable(L, -2);
-
     /* The userdata's on the stack. Call up to lua... */
     return 1;
 }
@@ -252,7 +250,6 @@ static int new_lua_obj(lua_State *L)
     } else {
         luaL_error(L, "Not a light user data object... [%s]", lua_typename(L, lua_type(L, lua_upvalueindex(1))));
     }
-
     return 1;
 }
 
