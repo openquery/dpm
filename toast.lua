@@ -16,6 +16,8 @@ function new_client(c)
 end
 
 listen = myp.listener("127.0.0.1", 5500)
-print("Set up new listener!", type(listen), listen:id(), listen:listener())
-
+print("listener data: ", listen:id(), listen:listener())
 callback[listen:id()] = {["Client connect"] = new_client}
+
+hs_pkt = myp.new_handshake_pkt()
+print("Built a new handshake packet!", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version())

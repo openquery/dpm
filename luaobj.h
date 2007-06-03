@@ -4,6 +4,7 @@
 #define LUAOBJ_H
 
 typedef int (*obj_func) (lua_State *L, void *var, void *var2);
+typedef void *(*obj_new) ();
 
 #define LO_READONLY 0
 #define LO_READWRITE 1
@@ -20,8 +21,11 @@ typedef const struct {
     const char *name; /* metatable name (object type) */
     const obj_reg    *accessors; /* array of indirect accessors. */
     const luaL_Reg   *methods; /* array of direct methods. */
+    const obj_new     obj_new_func; /* make new object function */
+    const char       *obj_new_name; /* Name of function for making new packet */
 } obj_toreg;
 
+void dump_stack();
 int register_obj_types(lua_State *L);
 int new_obj(lua_State *L, void *p, const char *type);
 

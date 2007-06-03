@@ -4,11 +4,11 @@
 #include "luaobj.h"
 
 /* Forward declarations */
-static void dump_stack();
 static int tmp_gc(lua_State *L);
 
 static int  obj_index(lua_State *L);
 static void obj_add(lua_State *L, obj_reg *r);
+static int  new_lua_obj(lua_State *L);
 
 /* Accessors */
 static int obj_int(lua_State *L, void *var, void *var2);
@@ -28,14 +28,26 @@ static const obj_reg conn_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
-static const luaL_Reg conn_m [] = {
+static const obj_reg handshake_regs [] = {
+    {"protocol_version", obj_uint8_t, LO_READWRITE, offsetof(my_handshake_packet, protocol_version), 0},
+    {"server_version", obj_string, LO_READONLY, offsetof(my_handshake_packet, server_version), 0},
+    {"thread_id", obj_uint32_t, LO_READWRITE, offsetof(my_handshake_packet, thread_id), 0},
+    {"scramble_buff", obj_string, LO_READONLY, offsetof(my_handshake_packet, scramble_buff), 0},
+    {"server_capabilities", obj_flags, LO_READWRITE, offsetof(my_handshake_packet, server_capabilities), 0},
+    {"server_language", obj_uint8_t, LO_READWRITE, offsetof(my_handshake_packet, server_language), 0},
+    {"server_status", obj_flags, LO_READWRITE, offsetof(my_handshake_packet, server_status), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
+static const luaL_Reg generic_m [] = {
     {"__gc", tmp_gc},
-    {NULL, NULL}
+    {NULL, NULL},
 };
 
 static const obj_toreg regs [] = {
-    {"myp.conn", conn_regs, conn_m},
-    {NULL, NULL, NULL},
+    {"myp.conn", conn_regs, generic_m, NULL, NULL},
+    {"myp.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
+    {NULL, NULL, NULL, NULL, NULL},
 };
 
 static int tmp_gc(lua_State *L)
@@ -44,7 +56,7 @@ static int tmp_gc(lua_State *L)
     return 0;
 }
 
-static void dump_stack()
+void dump_stack()
 {
     int top = lua_gettop(L);
     int i = 1;
@@ -208,7 +220,8 @@ static void obj_add(lua_State *L, obj_reg *r)
 /* _non_ lua centric object creatorabobble. */
 int new_obj(lua_State *L, void *p, const char *type)
 {
-    lua_pushlightuserdata(L, p);
+    void **u = (void **)lua_newuserdata(L, sizeof(void **));
+    *u = p;
 
     luaL_getmetatable(L, type);
     lua_setmetatable(L, -2);
@@ -217,11 +230,38 @@ int new_obj(lua_State *L, void *p, const char *type)
     return 1;
 }
 
+/* Lua-centric automated object builder. */
+static int new_lua_obj(lua_State *L)
+{
+    void *o;
+    void **u; 
+    lua_pushvalue(L, lua_upvalueindex(1)); /* Registration struct. */
+
+    if (lua_islightuserdata(L, -1)) {
+        obj_toreg *oreg = (obj_toreg *)lua_touserdata(L, -1);
+        lua_pop(L, 1);
+        o = oreg->obj_new_func();
+        if (o) {
+            u = (void **)lua_newuserdata(L, sizeof(void **));
+            *u = o;
+            luaL_getmetatable(L, oreg->name);
+            lua_setmetatable(L, -2);
+        } else {
+            luaL_error(L, "Unable to create object!");
+        }
+    } else {
+        luaL_error(L, "Not a light user data object... [%s]", lua_typename(L, lua_type(L, lua_upvalueindex(1))));
+    }
+
+    return 1;
+}
+
 /* Pseudo index function called on every access. This guy parses out the
  * accessor struct, handles read/write protectiveness, and makes the official
  * accessor call. */
 static int obj_index(lua_State *L)
 {
+    void **p;
     if (!lua_isuserdata(L, 1)) {
         luaL_error(L, "Expected userdata, got [%s]", lua_typename(L, lua_type(L,
  1)));
@@ -236,7 +276,8 @@ static int obj_index(lua_State *L)
         if (f->type == LO_READONLY && lua_gettop(L) > 1) {
             luaL_error(L, "Value is read only");
         }
-        return f->func(L, lua_touserdata(L, 1) + f->offset1, f->offset2 ? lua_touserdata(L, 1) + f->offset2 : 0);
+        p = lua_touserdata(L, 1);
+        return f->func(L, *p + f->offset1, f->offset2 ? *p + f->offset2 : 0);
     } else {
         luaL_error(L, "Not a light user data object... [%s]", lua_typename(L, lua_type(L, lua_upvalueindex(1))));
     }
@@ -248,14 +289,26 @@ static int obj_index(lua_State *L)
 int register_obj_types(lua_State *L)
 {
     obj_toreg *r = regs;
+    /* We need to iterate twice... Since the main function table _must_
+     * be at the top of the stack at the time we're being called.
+     */
+    for (; r->name; r++) {
+        if (!r->obj_new_name)
+            continue;
+        lua_pushstring(L, r->obj_new_name);
+        lua_pushlightuserdata(L, (void *)r);
+        lua_pushcclosure(L, new_lua_obj, 1);
+        lua_settable(L, -3);
+    }
+    lua_pop(L, 1);
+    r = regs;
     for (; r->name; r++) {
         luaL_newmetatable(L, r->name);
         luaL_register(L, NULL, r->methods);
         obj_add(L, r->accessors); /* Push it, push it real good. */
         /* metatable.__index = metatable */
         lua_pushvalue(L, -1); /* Create a copy to fold into the metamethod */
-        lua_setfield(L, -1, "__index");
-
+        lua_setfield(L, -2, "__index");
         lua_pop(L, 1);
     }
 

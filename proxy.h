@@ -191,8 +191,8 @@ typedef struct {
 
 typedef struct {
     int ptype;
-    void    (*free_me)(void *p);
-    void    (*to_buf)(void *p, conn *c);
+    void    (*free_me) (void *p);
+    int     (*to_buf) (void *p, conn *c);
 } my_packet_header;
 
 typedef struct {
@@ -287,5 +287,8 @@ typedef struct {
 /* Icky ewwy global vars. */
 
 extern struct lua_State *L;
+
+/* Global forward declarations */
+void *my_new_handshake_packet();
 
 #endif /* PROXY_H */

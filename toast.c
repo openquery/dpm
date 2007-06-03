@@ -44,6 +44,8 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count);
 static int received_packet(conn *c, void **p, int *ptype, int field_count);
 
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
+static void my_free_handshake_packet(void *p);
+static int my_wire_handshake_packet(void *p, conn *c);
 static my_auth_packet *my_consume_auth_packet(conn *c);
 static my_ok_packet *my_consume_ok_packet(conn *c);
 static my_err_packet *my_consume_err_packet(conn *c);
@@ -601,15 +603,16 @@ static void my_consume_header(conn *c)
 }
 
 /* TODO: In another life this should be some crazy struct buffer. */
-static void my_free_handshake_packet(void *p, conn *c)
+static void my_free_handshake_packet(void *p)
 {
     /* No allocated memory, easy. */
     free(p);
 }
 
 /* Takes handshake packet *p and writes as a packet into c's write buffer. */
-static int my_wire_handshake_packet(my_handshake_packet *p, conn *c)
+static int my_wire_handshake_packet(void *p, conn *c)
 {
+    my_handshake_packet *pkt = (my_handshake_packet *)p;
     int psize = 0;
 
     /* We must discover the length of the packet first, so we can size the
@@ -620,7 +623,7 @@ static int my_wire_handshake_packet(my_handshake_packet *p, conn *c)
 }
 
 /* Creates an "empty" handshake packet */
-static my_handshake_packet *my_new_handshake_packet()
+void *my_new_handshake_packet()
 {
     my_handshake_packet *p;
  
@@ -632,6 +635,8 @@ static my_handshake_packet *my_new_handshake_packet()
     memset(p, 0, sizeof(my_handshake_packet));
 
     p->h.ptype = myp_handshake;
+    p->h.free_me = my_free_handshake_packet;
+    p->h.to_buf = my_wire_handshake_packet;
     p->protocol_version = 10; /* FIXME: Should be a define? */
     strcpy(p->server_version, "Dormando DBProxy 0.0.0"); /* :P */
     p->thread_id = 1; /* Who cares. */
