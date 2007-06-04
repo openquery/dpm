@@ -65,6 +65,7 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
 
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
+static int check_pass(lua_State *L);
 static int wire_packet(lua_State *L);
 static int run_lua_callback(conn *c, int nargs);
 
@@ -848,12 +849,12 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     /* Supplied username. */
     /* FIXME: This string reading crap should be a helper function. */
     my_size = strlen((const char *)&c->rbuf[base]);
-    p->user = (char *)malloc( my_size );
 
-    if (p->user == 0) {
-        perror("Could not malloc()");
+    if (my_size - 1 > USERNAME_LENGTH) {
+        fprintf(stderr, "Username too long!\n");
         return NULL;
     }
+
     memcpy(p->user, &c->rbuf[base], my_size + 1);
     /* +1 to account for the \0 */
     base += my_size + 1;
@@ -1544,6 +1545,21 @@ static int run_lua_callback(conn *c, int nargs)
     return 0;
 }
 
+/* LUA command for verifying a password hash.
+ * Takes: Auth packet, handshake packet, password hash (sha1(sha1(plaintext)))
+ * returns 0 if they match up.
+ */
+static int check_pass(lua_State *L)
+{
+    my_auth_packet **auth = (my_auth_packet **)luaL_checkudata(L, 1, "myp.auth");
+    my_handshake_packet **hs = (my_handshake_packet **)luaL_checkudata(L, 2, "myp.handshake");
+    const char *stored_pass = luaL_checkstring(L, 3);
+
+    lua_pushinteger(L, my_check_scramble((*auth)->scramble_buff, (*hs)->scramble_buff, stored_pass));
+
+    return 1;
+}
+
 /* LUA command for wiring a packet into a connection. */
 static int wire_packet(lua_State *L)
 {
@@ -1619,6 +1635,7 @@ int main (int argc, char **argv)
     static const struct luaL_Reg myp [] = {
         {"listener", new_listener},
         {"wire_packet", wire_packet},
+        {"check_pass", check_pass},
         {NULL, NULL},
     };
 

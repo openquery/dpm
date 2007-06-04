@@ -205,7 +205,7 @@ typedef struct {
     uint8_t        protocol_version;
     char           server_version[SERVER_VERSION_LENGTH];
     uint32_t       thread_id;
-    char           scramble_buff[21]; /* NULL terminated, for some reason. */
+    unsigned char  scramble_buff[21]; /* NULL terminated, for some reason. */
     uint8_t        filler1; /* Should always be 0x00 */
     uint16_t       server_capabilities;
     uint8_t        server_language;
@@ -219,7 +219,7 @@ typedef struct {
     uint32_t       max_packet_size;
     uint8_t        charset_number;
     unsigned char  filler[23];
-    char          *user;
+    char           user[USERNAME_LENGTH];
     unsigned char  scramble_buff[21]; /* NULL terminated. */
     uint8_t        filler2;
     char          *databasename;
