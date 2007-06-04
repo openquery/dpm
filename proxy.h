@@ -182,6 +182,7 @@ typedef struct {
     int    packetsize;
     uint64_t field_count; /* Number of field packets expected. */
     uint8_t last_cmd; /* Last command ran through this connection. */
+    unsigned char packet_seq; /* Packet sequence */
 
     int listener;
 
@@ -192,8 +193,12 @@ typedef struct {
 typedef struct {
     int ptype;
     void    (*free_me) (void *p);
-    int     (*to_buf) (void *p, conn *c);
+    int     (*to_buf) (conn *c, void *p);
 } my_packet_header;
+
+typedef struct {
+    my_packet_header h;
+} my_packet_fuzz;
 
 typedef struct {
     my_packet_header h;

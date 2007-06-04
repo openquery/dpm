@@ -131,8 +131,8 @@ typedef char        byte;    /* Smallest addressable unit */
 #define INT32(v)    (int32) (v)
 
 
-#define int1store(T,A)	do { *((zend_uchar*) (T)) = (A); } while(0)
-#define uint1korr(A)	(*(((zend_uchar*)(A))))
+#define int1store(T,A)	do { *((unsigned char*) (T)) = (A); } while(0)
+#define uint1korr(A)	(*(((unsigned char*)(A))))
 
 /*
 ** Define-funktions for reading and storing in machine independent format

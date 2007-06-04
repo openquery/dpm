@@ -45,7 +45,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count);
 
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static void my_free_handshake_packet(void *p);
-static int my_wire_handshake_packet(void *p, conn *c);
+static int my_wire_handshake_packet(conn *c, void *p);
 static my_auth_packet *my_consume_auth_packet(conn *c);
 static my_ok_packet *my_consume_ok_packet(conn *c);
 static my_err_packet *my_consume_err_packet(conn *c);
@@ -63,6 +63,7 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
 
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
+static int wire_packet(lua_State *L);
 static int run_lua_callback(conn *c, int nargs);
 
 /* Test outbound connection function */
@@ -322,23 +323,16 @@ static conn *init_conn(int newfd)
 
     /* client typedef init should be its own function */
     newc = (conn *)malloc( sizeof(conn) ); /* error handling */
+    memset(newc, 0, sizeof(conn));
     newc->fd = newfd;
     newc->id = my_connection_counter++;
     newc->ev_flags = EV_READ | EV_PERSIST;
     newc->mystate = my_waiting;
     newc->mypstate = my_waiting;
-    newc->my_type = 0;
 
     /* Set up the buffers. */
-    newc->rbuf     = 0;
-    newc->wbuf     = 0;
     newc->rbufsize = BUF_SIZE;
     newc->wbufsize = BUF_SIZE;
-    newc->read     = 0;
-    newc->written  = 0;
-    newc->readto   = 0;
-    newc->towrite  = 0;
-    newc->listener = 0;
 
     newc->rbuf = (unsigned char *)malloc( (size_t)newc->rbufsize );
     newc->wbuf = (unsigned char *)malloc( (size_t)newc->wbufsize );
@@ -596,10 +590,17 @@ static int my_next_packet_start(conn *c)
 /* Consume the next mysql protocol length + seq header out of the buffer. */
 static void my_consume_header(conn *c)
 {
-    int base = 0;
-    base = c->readto;
+    int seq = 0;
+    int base = c->readto;
     c->packetsize = uint3korr(&c->rbuf[base]);
+    seq           = uint1korr(&c->rbuf[base + 1]);
     c->packetsize += 4; /* Add in the original header len */
+
+    if (c->packet_seq == seq) {
+        c->packet_seq++;
+    } else {
+        fprintf(stderr, "***WARNING*** Packets appear to be out of order conn [%d], header [%d]\n", c->packet_seq, seq);
+    }
 }
 
 /* TODO: In another life this should be some crazy struct buffer. */
@@ -610,16 +611,58 @@ static void my_free_handshake_packet(void *p)
 }
 
 /* Takes handshake packet *p and writes as a packet into c's write buffer. */
-static int my_wire_handshake_packet(void *p, conn *c)
+static int my_wire_handshake_packet(conn *c, void *p)
 {
     my_handshake_packet *pkt = (my_handshake_packet *)p;
-    int psize = 0;
+    int psize = 45;
+    size_t my_size = strlen(pkt->server_version) + 1;
+    int base  = c->towrite;
 
     /* We must discover the length of the packet first, so we can size the
-     * buffer. For a handshake packet, it's 45 bytes :)
+     * buffer. HS packets are 45 bytes + strlen(server_version) + 1
      */
+    psize += my_size + 4;
+    
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
 
-    return psize + 4;
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize);
+    int1store(&c->wbuf[base], c->packet_seq);
+    c->packet_seq++;
+
+    c->wbuf[base] = pkt->protocol_version;
+    base++;
+
+    memcpy(&c->wbuf[base], pkt->server_version, my_size);
+    base += my_size;
+
+    int4store(&c->wbuf[base], pkt->thread_id);
+    base += 4;
+
+    memcpy(&c->wbuf[base], pkt->scramble_buff, 8);
+    base += 8;
+
+    c->wbuf[base] = 0;
+    base++;
+
+    int2store(&c->wbuf[base], pkt->server_capabilities);
+    base += 2;
+
+    c->wbuf[base] = pkt->server_language;
+    base++;
+
+    int2store(&c->wbuf[base], pkt->server_status);
+    base += 2;
+
+    memset(&c->wbuf[base], 0, 13);
+    base += 13;
+
+    memcpy(&c->wbuf[base], pkt->scramble_buff + 8, 13);
+
+    return psize;
 }
 
 /* Creates an "empty" handshake packet */
@@ -641,7 +684,7 @@ void *my_new_handshake_packet()
     strcpy(p->server_version, "Dormando DBProxy 0.0.0"); /* :P */
     p->thread_id = 1; /* Who cares. */
     p->server_capabilities = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION;
-    p->server_language = 1;
+    p->server_language = 8;
     p->server_status = SERVER_STATUS_AUTOCOMMIT;
    
     if (read(urandom_sock, p->scramble_buff, 20) < 20) {
@@ -1163,7 +1206,8 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             assert(ptype == myp_cmd);
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
-            c->last_cmd = cmd->command;
+            c->last_cmd   = cmd->command;
+            c->packet_seq = 0;
             switch (c->last_cmd) {
             case COM_QUERY:
                 c->mypstate = mys_sending_rset;
@@ -1210,6 +1254,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             c->mypstate = myc_waiting;
             break;
         case myc_waiting:
+            c->packet_seq = 0;
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
             break;
@@ -1453,6 +1498,24 @@ static int run_lua_callback(conn *c, int nargs)
     return 0;
 }
 
+/* LUA command for wiring a packet into a connection. */
+static int wire_packet(lua_State *L)
+{
+    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
+    my_packet_fuzz *p;
+    void **tmp;
+
+    luaL_checktype(L, 2, LUA_TUSERDATA);
+
+    tmp = (void **)lua_touserdata(L, 2);
+    p = *tmp;
+
+    p->h.to_buf(*c, *tmp);
+    fprintf(stdout, "Wrote packet of type [%d]\n", p->h.ptype);
+
+    return 0;
+}
+
 static int new_listener(lua_State *L)
 {
     struct sockaddr_in addr;
@@ -1507,6 +1570,7 @@ int main (int argc, char **argv)
     struct sigaction sa;
     static const struct luaL_Reg myp [] = {
         {"listener", new_listener},
+        {"wire_packet", wire_packet},
         {NULL, NULL},
     };
 

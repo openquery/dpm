@@ -18,6 +18,7 @@ function new_client(c)
 
     hs_pkt = myp.new_handshake_pkt()
     print("Built a new handshake packet!", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version())
+    myp.wire_packet(c, hs_pkt);
 end
 
 listen = myp.listener("127.0.0.1", 5500)
