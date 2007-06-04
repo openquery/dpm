@@ -6,17 +6,17 @@ dofile ("defines.lua")
 callback = {}
 clients  = {}
 
-function client_got_auth(c, auth_pkt)
-    print "Got auth callback"
+function client_got_auth(auth_pkt, cid)
+    print("Got auth callback", type(auth_pkt), type(cid))
 end
 
 function new_client(c)
     -- "c" is a new listening connection object.
     print("Holy crap it's a new client!", type(c), c:id(), c:listener(), c:my_type())
     clients[c:id()] = c -- Prevent client from being garbage collected
-    callback[c:id()] = {["Client waiting auth"] = client_got_auth}
+    callback[c:id()] = {["Client waiting"] = client_got_auth}
 
-    hs_pkt = myp.new_handshake_pkt()
+    local hs_pkt = myp.new_handshake_pkt()
     print("Built a new handshake packet!", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version())
     myp.wire_packet(c, hs_pkt);
 end

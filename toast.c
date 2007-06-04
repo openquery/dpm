@@ -47,6 +47,8 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static void my_free_handshake_packet(void *p);
 static int my_wire_handshake_packet(conn *c, void *p);
 static my_auth_packet *my_consume_auth_packet(conn *c);
+static void my_free_auth_packet(void *p);
+static int my_wire_auth_packet(conn *c, void *p);
 static my_ok_packet *my_consume_ok_packet(conn *c);
 static my_err_packet *my_consume_err_packet(conn *c);
 static my_cmd_packet *my_consume_cmd_packet(conn *c);
@@ -232,7 +234,6 @@ static int handle_write(conn *c)
 
     for(;;) {
         if (c->written >= c->towrite) {
-            //fprintf(stdout, "Finished writing out (%d) bytes to %d\n", c->written, c->fd);
             c->mystate = my_waiting;
             c->written = 0;
             c->towrite = 0;
@@ -378,6 +379,7 @@ static void handle_event(int fd, short event, void *arg)
             return;
         }
 
+        #ifdef __NULLED_CODE
         /* For every incoming socket, lets create a backend sock. */
         newback = test_outbound();
 
@@ -394,15 +396,22 @@ static void handle_event(int fd, short event, void *arg)
          * FIXME: This'll need cleaning up code.
          */
         newback->remote = (struct conn *)newc;
+        #endif
 
         newc->mypstate  = myc_wait_handshake;
         newc->my_type   = my_client;
-        
+
         /* Pass the object up into lua for later inspection. */
         new_obj(L, newc, "myp.conn");
 
         c->mypstate = myc_connect;
         run_lua_callback(c, 1);
+
+        /* The callback might've written packets to the wire. */
+        if (newc->towrite) {
+            if (handle_write(newc) == -1)
+                return;
+        }
         return;
    }
    
@@ -629,8 +638,10 @@ static int my_wire_handshake_packet(conn *c, void *p)
 
     c->towrite += psize;
 
-    int3store(&c->wbuf[base], psize);
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
     int1store(&c->wbuf[base], c->packet_seq);
+    base++;
     c->packet_seq++;
 
     c->wbuf[base] = pkt->protocol_version;
@@ -681,7 +692,7 @@ void *my_new_handshake_packet()
     p->h.free_me = my_free_handshake_packet;
     p->h.to_buf = my_wire_handshake_packet;
     p->protocol_version = 10; /* FIXME: Should be a define? */
-    strcpy(p->server_version, "Dormando DBProxy 0.0.0"); /* :P */
+    strcpy(p->server_version, "5.0.37"); /* :P */
     p->thread_id = 1; /* Who cares. */
     p->server_capabilities = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION;
     p->server_language = 8;
@@ -772,7 +783,27 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     memcpy(&p->scramble_buff[8], &c->rbuf[base], 13);
     base += 13;
 
+    new_obj(L, p, "myp.handshake");
+
     return p;
+}
+
+/* FIXME: Memory leak. Must free user/dbname */
+static void my_free_auth_packet(void *p)
+{
+    free(p);
+}
+
+void *my_new_auth_packet()
+{
+    my_auth_packet *p;
+
+    return p;
+}
+
+static int my_wire_auth_packet(conn *c, void *p)
+{
+    return 0;
 }
 
 /* FIXME: Two stupid optional params. if no scramble buf, and no database
@@ -827,8 +858,7 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     /* +1 to account for the \0 */
     base += my_size + 1;
 
-    /* "Length coded binary" my ass. */
-    /* If we don't have one, leave it all zeroes. */
+    /* If we don't have a scramble, leave it all zeroes. */
     if (c->rbuf[base] > 0) {
         memcpy(&p->scramble_buff, &c->rbuf[base + 1], 21);
         base += 21;
@@ -850,7 +880,7 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
         base += my_size + 1;
     }
 
-    fprintf(stdout, "***PACKET*** Client auth packet: %x\n%u\n%x\n%s\n%s\n", p->client_flags, p->max_packet_size, p->charset_number, p->user, p->databasename);
+    new_obj(L, p, "myp.auth");
 
     return p;
 }
@@ -1242,6 +1272,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 static int received_packet(conn *c, void **p, int *ptype, int field_count)
 {
     int ret = 0;
+    int nargs = 0;
     #ifdef DBUG_STATE
     fprintf(stdout, "START State: %s\n", my_state_name[c->mypstate]);
     #endif
@@ -1252,6 +1283,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *p = my_consume_auth_packet(c);
             *ptype = myp_auth;
             c->mypstate = myc_waiting;
+            nargs++;
             break;
         case myc_waiting:
             c->packet_seq = 0;
@@ -1266,6 +1298,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *p = my_consume_handshake_packet(c);
             *ptype = myp_handshake;
             c->mypstate = mys_wait_auth;
+            nargs++; /* The nargs++ is for the callback function */
             break;
         case mys_sending_ok:
             switch (field_count) {
@@ -1349,7 +1382,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     #ifdef DBUG_STATE
     fprintf(stdout, "END State: %s\n", my_state_name[c->mypstate]);
     #endif
-    run_lua_callback(c, 0);
+    run_lua_callback(c, nargs);
     return ret;
 }
 
@@ -1389,7 +1422,6 @@ static int run_protocol(conn *c, int read, int written)
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
             if (c->read > 3) {
-                //fprintf(stdout, "Looks like we have a packet. Start reading\n");
                 c->mystate = my_reading;
             } else if (c->packetsize == 0) {
                 break;
@@ -1400,7 +1432,6 @@ static int run_protocol(conn *c, int read, int written)
              * other guy
              * FIXME: Making assumptions about remote, duh :P
              */
-            remote = (conn *)c->remote;
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
                 fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
@@ -1413,28 +1444,38 @@ static int run_protocol(conn *c, int read, int written)
                 //if (p == NULL) return -1;
                 /*err = run_packet_protocol(c);
                 if (err == -1) return -1;*/
-                /* Buffered up all pending packet reads. Write out to remote */
-                if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
-                    return -1;
+
+                /* Handle writing to a remote if one exists */
+                if (c->remote) {
+                    remote = (conn *)c->remote;
+                    if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
+                        return -1;
+                    }
+
+                    /* Drive other half of state machine. */
+                    ret = sent_packet(remote, &p, ptype, c->field_count);
+
+                    memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
+                    remote->towrite += c->packetsize;
                 }
-
-                /* Drive other half of state machine. */
-                ret = sent_packet(remote, &p, ptype, c->field_count);
-
-                memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
-                remote->towrite += c->packetsize;
 
                 /* Copied in the packet; advance to next packet. */
                 c->readto += c->packetsize;
                 }
             }
-            if (c == NULL) {
+            if (c == NULL)
                 break;
-            }
-            err = handle_write(remote);
-            if (err == -1) return -1;
 
-            /* Any pending packet reads? If so, reset boofer. */
+            if (c->towrite) {
+                err = handle_write(c);
+                if (err == -1) return -1;
+            }
+            if (remote) {
+                err = handle_write(remote);
+                if (err == -1) return -1;
+            }
+
+            /* Any pending packet reads? If none, reset boofer. */
             if (c->readto == c->read) {
                 //fprintf(stdout, "Resetting read buffer\n");
                 c->read    = 0;
@@ -1456,9 +1497,14 @@ static int run_protocol(conn *c, int read, int written)
  */
 static int run_lua_callback(conn *c, int nargs)
 {
-    int top = lua_gettop(L); /* Save so we may saw off the top later */
+    int top = 0;
 
     fprintf(stdout, "Running callback [%s] on conn id %llu\n", my_state_name[c->mypstate], (unsigned long long) c->id);
+
+    lua_pushinteger(L, c->id);
+    nargs++;
+
+    top = lua_gettop(L); /* Save so we may saw off the top later */
 
     lua_getglobal(L, "callback");
     if (!lua_istable(L, -1)) {
@@ -1512,6 +1558,8 @@ static int wire_packet(lua_State *L)
 
     p->h.to_buf(*c, *tmp);
     fprintf(stdout, "Wrote packet of type [%d]\n", p->h.ptype);
+    /* FIXME: sent_packet doesn't need the field count at all? */
+    sent_packet(*c, tmp, p->h.ptype, 0);
 
     return 0;
 }

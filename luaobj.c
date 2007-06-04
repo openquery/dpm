@@ -39,6 +39,15 @@ static const obj_reg handshake_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+static const obj_reg auth_regs [] = {
+    {"client_flags", obj_flags, LO_READWRITE, offsetof(my_auth_packet, client_flags), 0},
+    {"max_packet_size", obj_uint32_t, LO_READWRITE, offsetof(my_auth_packet, max_packet_size), 0},
+    {"charset_number", obj_uint8_t, LO_READWRITE, offsetof(my_auth_packet, charset_number), 0},
+    {"user", obj_string, LO_READWRITE, offsetof(my_auth_packet, user), 0},
+    {"databasename", obj_string, LO_READWRITE, offsetof(my_auth_packet, databasename), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", tmp_gc},
     {NULL, NULL},
@@ -47,6 +56,7 @@ static const luaL_Reg generic_m [] = {
 static const obj_toreg regs [] = {
     {"myp.conn", conn_regs, generic_m, NULL, NULL},
     {"myp.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
+    {"myp.auth", auth_regs, generic_m, my_new_auth_packet, "new_auth_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
