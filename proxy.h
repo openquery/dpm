@@ -296,5 +296,6 @@ extern struct lua_State *L;
 /* Global forward declarations */
 void *my_new_handshake_packet();
 void *my_new_auth_packet();
+void *my_new_ok_packet();
 
 #endif /* PROXY_H */

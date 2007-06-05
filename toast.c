@@ -45,18 +45,23 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count);
 
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static void my_free_handshake_packet(void *p);
-static int my_wire_handshake_packet(conn *c, void *p);
+static int my_wire_handshake_packet(conn *c, void *pkt);
 static my_auth_packet *my_consume_auth_packet(conn *c);
 static void my_free_auth_packet(void *p);
-static int my_wire_auth_packet(conn *c, void *p);
+static int my_wire_auth_packet(conn *c, void *pkt);
 static my_ok_packet *my_consume_ok_packet(conn *c);
+static void my_free_ok_packet(void *p);
+static int my_wire_ok_packet(conn *c, void *pkt);
 static my_err_packet *my_consume_err_packet(conn *c);
 static my_cmd_packet *my_consume_cmd_packet(conn *c);
 static my_rset_packet *my_consume_rset_packet(conn *c);
 static my_field_packet *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
 static my_eof_packet *my_consume_eof_packet(conn *c);
+
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
+static int my_size_binary_field(uint64_t length);
+static void my_write_binary_field(unsigned char *buf, int *base, uint64_t length);
 static uint8_t my_char_val(uint8_t X);
 static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len);
 static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2, uint len);
@@ -448,14 +453,7 @@ static void handle_event(int fd, short event, void *arg)
     }
 }
 
-/* MySQL protocol handler...
- * everything starts with 3 byte len, 1 byte seq.
- * can assume read at least 4 bytes before parsing. discover len once have 4
- * bytes. read until len is satisfied.
- * mind special case of > 16MB packets.
- * conn needs states enum for mysql protocol
- * need state machine for dealing with packet once buffered.
- */
+/* MySQL Protocol support routines */
 
 /* Read a length encoded binary field into a uint64_t */
 static uint64_t my_read_binary_field(unsigned char *buf, int *base)
@@ -474,20 +472,63 @@ static uint64_t my_read_binary_field(unsigned char *buf, int *base)
             (*base)++;
             return (uint64_t) ~0;
         case 252:
-            memcpy(&ret, &buf[*base], 2);
+            ret = uint2korr(&buf[*base]);
             (*base) += 2;
             break;
         case 253:
             /* NOTE: Docs say this is 32-bit. libmysqlnd says 24-bit? */
-            memcpy(&ret, &buf[*base], 4);
+            ret = uint4korr(&buf[*base]);
             (*base) += 4;
             break;
         case 254:
-            memcpy(&ret, &buf[*base], 8);
+            ret = uint8korr(&buf[*base]);
             (*base) += 8;
     }
 
     return ret;
+}
+
+/* Same as above, but writes the binary field into buffer. */
+static void my_write_binary_field(unsigned char *buf, int *base, uint64_t length)
+{
+    if (length < (uint64_t) 251) {
+        *buf = length;
+        (*base)++;
+        return;
+    }
+
+    if (length < (uint64_t) 65536) {
+        *buf++ = 252;
+        int2store(buf, (uint16_t) length);
+        (*base)++;
+        return;
+    }
+
+    if (length < (uint64_t) 16777216) {
+        *buf++ = 253;
+        int3store(buf, (uint32_t) length);
+        (*base)++;
+        return;
+    }
+
+    *buf++ = 254;
+    int8store(buf, length);
+}
+
+/* Returns the binary size of a field, for use in pre-allocating wire buffers
+ */
+static int my_size_binary_field(uint64_t length)
+{
+    if (length < (uint64_t) 251) 
+        return 1;
+
+    if (length < (uint64_t) 65536)
+        return 3;
+
+    if (length < (uint64_t) 16777216)
+        return 5;
+
+    return 9;
 }
 
 /* Mostly from sql/password.c in mysqld */
@@ -603,7 +644,7 @@ static void my_consume_header(conn *c)
     int seq = 0;
     int base = c->readto;
     c->packetsize = uint3korr(&c->rbuf[base]);
-    seq           = uint1korr(&c->rbuf[base + 1]);
+    seq           = uint1korr(&c->rbuf[base + 3]);
     c->packetsize += 4; /* Add in the original header len */
 
     if (c->packet_seq == seq) {
@@ -621,12 +662,12 @@ static void my_free_handshake_packet(void *p)
 }
 
 /* Takes handshake packet *p and writes as a packet into c's write buffer. */
-static int my_wire_handshake_packet(conn *c, void *p)
+static int my_wire_handshake_packet(conn *c, void *pkt)
 {
-    my_handshake_packet *pkt = (my_handshake_packet *)p;
+    my_handshake_packet *p = (my_handshake_packet *)pkt;
     int psize = 45;
-    size_t my_size = strlen(pkt->server_version) + 1;
-    int base  = c->towrite;
+    size_t my_size = strlen(p->server_version) + 1;
+    int base = c->towrite;
 
     /* We must discover the length of the packet first, so we can size the
      * buffer. HS packets are 45 bytes + strlen(server_version) + 1
@@ -645,34 +686,34 @@ static int my_wire_handshake_packet(conn *c, void *p)
     base++;
     c->packet_seq++;
 
-    c->wbuf[base] = pkt->protocol_version;
+    c->wbuf[base] = p->protocol_version;
     base++;
 
-    memcpy(&c->wbuf[base], pkt->server_version, my_size);
+    memcpy(&c->wbuf[base], p->server_version, my_size);
     base += my_size;
 
-    int4store(&c->wbuf[base], pkt->thread_id);
+    int4store(&c->wbuf[base], p->thread_id);
     base += 4;
 
-    memcpy(&c->wbuf[base], pkt->scramble_buff, 8);
+    memcpy(&c->wbuf[base], p->scramble_buff, 8);
     base += 8;
 
     c->wbuf[base] = 0;
     base++;
 
-    int2store(&c->wbuf[base], pkt->server_capabilities);
+    int2store(&c->wbuf[base], p->server_capabilities);
     base += 2;
 
-    c->wbuf[base] = pkt->server_language;
+    c->wbuf[base] = p->server_language;
     base++;
 
-    int2store(&c->wbuf[base], pkt->server_status);
+    int2store(&c->wbuf[base], p->server_status);
     base += 2;
 
     memset(&c->wbuf[base], 0, 13);
     base += 13;
 
-    memcpy(&c->wbuf[base], pkt->scramble_buff + 8, 13);
+    memcpy(&c->wbuf[base], p->scramble_buff + 8, 13);
 
     return psize;
 }
@@ -689,9 +730,9 @@ void *my_new_handshake_packet()
     }
     memset(p, 0, sizeof(my_handshake_packet));
 
-    p->h.ptype = myp_handshake;
+    p->h.ptype   = myp_handshake;
     p->h.free_me = my_free_handshake_packet;
-    p->h.to_buf = my_wire_handshake_packet;
+    p->h.to_buf  = my_wire_handshake_packet;
     p->protocol_version = 10; /* FIXME: Should be a define? */
     strcpy(p->server_version, "5.0.37"); /* :P */
     p->thread_id = 1; /* Who cares. */
@@ -724,8 +765,9 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     }
     memset(p, 0, sizeof(my_handshake_packet));
 
-    p->h.ptype = myp_handshake;
-    /* FIXME: add free and store handlers */
+    p->h.ptype   = myp_handshake;
+    p->h.free_me = my_free_handshake_packet;
+    p->h.to_buf  = my_wire_handshake_packet;
 
     /* We only support protocol 10 right now... */
     p->protocol_version = c->rbuf[base];
@@ -802,7 +844,7 @@ void *my_new_auth_packet()
     return p;
 }
 
-static int my_wire_auth_packet(conn *c, void *p)
+static int my_wire_auth_packet(conn *c, void *pkt)
 {
     return 0;
 }
@@ -886,6 +928,83 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     return p;
 }
 
+static void my_free_ok_packet(void *pkt)
+{
+    my_ok_packet *p = (my_ok_packet *)pkt;
+    if (p->message)
+        free(p->message);
+
+    free(p);
+}
+
+void *my_new_ok_packet()
+{
+    my_ok_packet *p;
+
+    /* Clear out the struct. */
+    p = (my_ok_packet *)malloc( sizeof(my_ok_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_ok_packet));
+
+    p->h.ptype   = myp_ok;
+    p->h.free_me = my_free_ok_packet;
+    p->h.to_buf  = my_wire_ok_packet;
+
+    p->server_status = SERVER_STATUS_AUTOCOMMIT; /* default autocommit mode */
+
+    p->message = NULL;
+
+    return p;
+}
+
+static int my_wire_ok_packet(conn *c, void *pkt)
+{
+    my_ok_packet *p = (my_ok_packet *)pkt;
+    int base = c->towrite;
+
+    int psize = 9; /* misc chunks + header */
+    psize += my_size_binary_field(p->affected_rows);
+    psize += my_size_binary_field(p->insert_id);
+    if (p->message_len) {
+        psize += my_size_binary_field(p->message_len);
+        psize += p->message_len;
+    }
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
+    c->packet_seq++;
+
+    c->wbuf[base] = p->field_count;
+    base++;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->affected_rows);
+    my_write_binary_field(&c->wbuf[base], &base, p->insert_id);
+
+    int2store(&c->wbuf[base], p->server_status);
+    base += 2;
+
+    int2store(&c->wbuf[base], p->warning_count);
+    base += 2;
+
+    if (p->message_len) {
+        my_write_binary_field(&c->wbuf[base], &base, p->message_len);
+        memcpy(&c->wbuf[base], p->message, p->message_len);
+    }
+
+    return 0;
+}
+
 static my_ok_packet *my_consume_ok_packet(conn *c)
 {
     my_ok_packet *p;
@@ -901,16 +1020,17 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
     memset(p, 0, sizeof(my_ok_packet));
 
     p->h.ptype = myp_ok;
-    /* FIXME: add free and store handlers */
+    p->h.free_me = my_free_ok_packet;
+    p->h.to_buf  = my_wire_ok_packet;
 
     p->affected_rows = my_read_binary_field(c->rbuf, &base);
 
     p->insert_id = my_read_binary_field(c->rbuf, &base);
 
-    memcpy(&p->server_status, &c->rbuf[base], 2);
+    p->server_status = uint2korr(&c->rbuf[base]);
     base += 2;
 
-    memcpy(&p->warning_count, &c->rbuf[base], 2);
+    p->warning_count = uint2korr(&c->rbuf[base]);
     base += 2;
 
     if (c->packetsize > base - c->readto && (my_size = my_read_binary_field(c->rbuf, &base))) {
@@ -924,8 +1044,6 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
     } else {
         p->message = NULL;
     }
-
-    fprintf(stdout, "***PACKET*** Server OK packet: %x\n%llu\n%llu\n%u\n%u\n%s\n", p->field_count, (unsigned long long)p->affected_rows, (unsigned long long)p->insert_id, p->server_status, p->warning_count, p->message_len ? p->message : '\0');
 
     return p;
 }
@@ -1238,7 +1356,6 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
             c->last_cmd   = cmd->command;
-            c->packet_seq = 0;
             switch (c->last_cmd) {
             case COM_QUERY:
                 c->mypstate = mys_sending_rset;
@@ -1287,7 +1404,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             nargs++;
             break;
         case myc_waiting:
-            c->packet_seq = 0;
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
             break;
@@ -1376,7 +1492,12 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         /* Read errors if we detected an error packet. */
         if (*ptype == myp_err) {
             *p = my_consume_err_packet(c);
+            c->packet_seq = 0;
             c->mypstate = mys_wait_cmd;
+        }
+
+        if (c->mypstate == mys_wait_cmd) {
+            c->packet_seq = 0;
         }
     }
 
@@ -1574,7 +1695,9 @@ static int wire_packet(lua_State *L)
 
     p->h.to_buf(*c, *tmp);
     fprintf(stdout, "Wrote packet of type [%d]\n", p->h.ptype);
+
     /* FIXME: sent_packet doesn't need the field count at all? */
+    lua_settop(L, 0);
     sent_packet(*c, tmp, p->h.ptype, 0);
 
     return 0;
