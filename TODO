@@ -13,7 +13,7 @@ stages to client auth:
 *- Upon auth return, receive conn obj and auth pkt
 *- C call for checking the scramble stage against an argument string
    (PASSWORD("whatever") hash)
- - Create/send OK and Err packets
+*- Create/send OK and Err packets
  - support for __gc to close a connection (or setting it to nil) (TODO: Shit proper error to wire)
 
 stages to server auth:

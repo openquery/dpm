@@ -15,22 +15,19 @@ end
 
 function client_got_auth(auth_pkt, cid)
     print("Got auth callback", type(auth_pkt), type(cid))
-    print("Auth pkt:", auth_pkt:user(), auth_pkt:charset_number(), auth_pkt:max_packet_size())
     local hs_pkt = storage[cid]
-    print("Old handshake packet!", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version())
     if (passdb[auth_pkt:user()] and myp.check_pass(auth_pkt, hs_pkt, passdb[auth_pkt:user()]) == 0) then
         print "OMFG passwords matched!"
+        local ok_pkt = myp.new_ok_pkt()
+        -- FIXME: Prior to this stage "Client waiting" should mean "Client got
+        -- auth"
+        callback[cid] = {["Client waiting"] = client_ok}
+        myp.wire_packet(clients[cid], ok_pkt)
     else
         print "OMFG passwords did NOT match!!!"
     end
-    storage[cid] = nil
 
-    local ok_pkt = myp.new_ok_pkt()
-    print("Built a new ok packet!", type(ok_pkt))
-    -- FIXME: Prior to this stage "Client waiting" should mean "Client got
-    -- auth"
-    callback[cid] = {["Client waiting"] = client_ok}
-    myp.wire_packet(clients[cid], ok_pkt)
+    storage[cid] = nil
 end
 
 function new_client(c)
