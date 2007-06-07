@@ -48,7 +48,14 @@ end
 
 function server_handshake(hs_pkt, cid)
     print "Got callback for server handshake packet"
-    print("HS_PKT", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version(), cid)
+
+    local auth_pkt = myp.new_auth_pkt()
+    print("Built new auth packet!", type(auth_pkt), auth_pkt:user())
+
+    myp.crypt_pass(auth_pkt, hs_pkt, "toast")
+
+    myp.wire_packet(backend, auth_pkt)
+    -- Don't need to store anything, server will return 'ok' or 'err' packet.
 end
 
 listen = myp.listener("127.0.0.1", 5500)

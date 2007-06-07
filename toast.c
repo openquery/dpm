@@ -79,9 +79,9 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
 static int new_listener(lua_State *L);
 static int new_connect(lua_State *L);
 static int check_pass(lua_State *L);
+static int crypt_pass(lua_State *L);
 static int wire_packet(lua_State *L);
 static int run_lua_callback(conn *c, int nargs);
-
 
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
@@ -815,11 +815,69 @@ void *my_new_auth_packet()
 {
     my_auth_packet *p;
 
+    /* Clear out the struct. */
+    p = (my_auth_packet *)malloc( sizeof(my_auth_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_auth_packet));
+
+    p->h.ptype   = myp_auth;
+    p->h.free_me = my_free_auth_packet;
+    p->h.to_buf  = my_wire_auth_packet;
+
+    p->client_flags = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION;
+
+    p->max_packet_size = 16777216; /* FIXME: Double check this. */
+    p->charset_number = 8;
+    strcpy(p->user, "whee"); /* FIXME: Needs to be editable. */
+    p->databasename = NULL; /* Don't need a default DB. */
+
     return p;
 }
 
 static int my_wire_auth_packet(conn *c, void *pkt)
 {
+    my_auth_packet *p = (my_auth_packet *)pkt;
+    int psize = 54;
+    size_t my_size = strlen(p->user) + 1;
+    int base = c->towrite;
+
+    psize += my_size + 4;
+    
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
+    c->packet_seq++;
+
+    int4store(&c->wbuf[base], p->client_flags);
+    base += 4;
+
+    int4store(&c->wbuf[base], p->max_packet_size);
+    base += 4;
+    
+    c->wbuf[base] = p->charset_number;
+    base++;
+
+    memset(&c->wbuf[base], 0, 23);
+    base += 23;
+
+    memcpy(&c->wbuf[base], p->user, my_size);
+    base += my_size;
+
+    memcpy(&c->wbuf[base], p->scramble_buff, 21);
+    base += 21;
+
+    c->wbuf[base] = 0; /* More filler... */
+
     return 0;
 }
 
@@ -841,19 +899,20 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     }
     memset(p, 0, sizeof(my_auth_packet));
 
-    p->h.ptype = myp_auth;
-    /* FIXME: add free and store handlers */
+    p->h.ptype   = myp_auth;
+    p->h.free_me = my_free_auth_packet;
+    p->h.to_buf  = my_wire_auth_packet;
 
     /* Client flags. Same as server_flags with some crap added/removed.
      * at this point in packet processing we should take out unsupported
      * options.
      */
-    memcpy(&p->client_flags, &c->rbuf[base], 4);
+    p->client_flags = uint4korr(&c->rbuf[base]);
     base += 4;
 
     /* Should we short circuit this to something more reasonable for latency?
      */
-    memcpy(&p->max_packet_size, &c->rbuf[base], 4);
+    p->max_packet_size = uint4korr(&c->rbuf[base]);
     base += 4;
 
     p->charset_number = c->rbuf[base];
@@ -1721,6 +1780,23 @@ static int check_pass(lua_State *L)
     return 1;
 }
 
+/* LUA command for encrypting a password for client->server auth.
+ * Takes: Auth packet to write scramble into, handshake packet with random
+ * seed, plaintext password to scramble.
+ * returns nothing.
+ */
+static int crypt_pass(lua_State *L)
+{
+    my_auth_packet **auth = (my_auth_packet **)luaL_checkudata(L, 1, "myp.auth");
+    my_handshake_packet **hs = (my_handshake_packet **)luaL_checkudata(L, 2, "myp.handshake");
+    const char *plain_pass = luaL_checkstring(L, 3);
+
+    /* Encrypt the password into the authentication packet. */
+    my_scramble((*auth)->scramble_buff, (*hs)->scramble_buff, plain_pass);
+
+    return 0;
+}
+
 /* LUA command for wiring a packet into a connection. */
 static int wire_packet(lua_State *L)
 {
@@ -1844,6 +1920,7 @@ int main (int argc, char **argv)
         {"connect", new_connect},
         {"wire_packet", wire_packet},
         {"check_pass", check_pass},
+        {"crypt_pass", crypt_pass},
         {NULL, NULL},
     };
 
