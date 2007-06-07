@@ -1563,9 +1563,10 @@ static int run_protocol(conn *c, int read, int written)
                 int ret = 0;
                 /* Drive the packet state machine. */
                 ret = received_packet(c, &p, &ptype, c->rbuf[c->readto + 4]);
-                //if (p == NULL) return -1;
-                /*err = run_packet_protocol(c);
-                if (err == -1) return -1;*/
+
+                /* Once all 'received packets' return a type, we can sanity
+                 * check that a pointer was returned. */
+                /* if (p == NULL) return -1; */
 
                 /* Handle writing to a remote if one exists */
                 if (c->remote) {
@@ -1588,14 +1589,11 @@ static int run_protocol(conn *c, int read, int written)
             if (c == NULL)
                 break;
 
-            if (c->towrite) {
-                err = handle_write(c);
-                if (err == -1) return -1;
-            }
-            if (remote) {
-                err = handle_write(remote);
-                if (err == -1) return -1;
-            }
+            if (c->towrite && handle_write(c) == -1)
+                return -1;
+
+            if (remote && handle_write(remote) == -1)
+                return -1;
 
             /* Any pending packet reads? If none, reset boofer. */
             if (c->readto == c->read) {
