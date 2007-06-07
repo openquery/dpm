@@ -649,6 +649,11 @@ static void my_consume_header(conn *c)
 
     if (c->packet_seq == seq) {
         c->packet_seq++;
+    } else if (seq == 0) {
+        /* FIXME: There should be a more elegant way of resetting the sequence
+         * packet outside of the header consumer.
+         */
+        c->packet_seq = 1;
     } else {
         fprintf(stderr, "***WARNING*** Packets appear to be out of order conn [%d], header [%d]\n", c->packet_seq, seq);
     }
