@@ -46,10 +46,15 @@ function new_client(c)
     storage[c:id()] = hs_pkt
 end
 
+function server_handshake(hs_pkt, cid)
+    print "Got callback for server handshake packet"
+    print("HS_PKT", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version(), cid)
+end
+
 listen = myp.listener("127.0.0.1", 5500)
 print("listener data: ", listen:id(), listen:listener())
 callback[listen:id()] = {["Client connect"] = new_client}
--- listen2 = myp.listener("127.0.0.1", 5501)
--- print("listener2 data: ", listen2:id(), listen2:listener())
--- callback[listen2:id()] = {["Client connect"] = new_client}
+
+backend = myp.connect("127.0.0.1", 3306)
+callback[backend:id()] = {["Server waiting auth"] = server_handshake}
 

@@ -1,7 +1,6 @@
 PRACTICE:
 
-write C outbound_connect
-add to lua (return conn object)
+handle case of client not supplying password, user not needing one
 add "attach to" C call for lua for attaching a proxy
 have lua make backend connects and attach
 
@@ -17,10 +16,10 @@ stages to client auth:
  - support for __gc to close a connection (or setting it to nil) (TODO: Shit proper error to wire)
 
 stages to server auth:
- - request new outbound connection: outbound = new_backend("ip", port)
+*- request new outbound connection: outbound = new_backend("ip", port)
    ( 'outbound' is a conn struct )
- - register callback for handshake packet return
- - parse handshake packet, create auth packet object
+*- register callback for handshake packet return
+*- parse handshake packet, create auth packet object
  - C call for setting scramble for auth packet object
  - Write auth packet to wire
  - Callback on waiting auth result. handle OK or ERR

@@ -47,15 +47,19 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count);
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static void my_free_handshake_packet(void *p);
 static int my_wire_handshake_packet(conn *c, void *pkt);
+
 static my_auth_packet *my_consume_auth_packet(conn *c);
 static void my_free_auth_packet(void *p);
 static int my_wire_auth_packet(conn *c, void *pkt);
+
 static my_ok_packet *my_consume_ok_packet(conn *c);
 static void my_free_ok_packet(void *p);
 static int my_wire_ok_packet(conn *c, void *pkt);
+
 static my_err_packet *my_consume_err_packet(conn *c);
-static void my_free_err_packet(void *p);
+static void my_free_err_packet(void *pkt);
 static int my_wire_err_packet(conn *c, void *pkt);
+
 static my_cmd_packet *my_consume_cmd_packet(conn *c);
 static my_rset_packet *my_consume_rset_packet(conn *c);
 static my_field_packet *my_consume_field_packet(conn *c);
@@ -73,52 +77,12 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
 
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
+static int new_connect(lua_State *L);
 static int check_pass(lua_State *L);
 static int wire_packet(lua_State *L);
 static int run_lua_callback(conn *c, int nargs);
 
-/* Test outbound connection function */
-static conn *test_outbound()
-{
-    int outsock;
-    conn *c;
-    struct sockaddr_in dest_addr;
-    int flags = 1;
 
-    fprintf(stdout, "Attempting outbound socket request\n");
-
-    outsock = socket(AF_INET, SOCK_STREAM, 0); /* check errors */
-
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(MY_PORT);
-    dest_addr.sin_addr.s_addr = inet_addr(MY_SERVER);
-
-    set_sock_nonblock(outsock); /* check errors */
-
-    memset(&(dest_addr.sin_zero), '\0', 8);
-
-    setsockopt(outsock, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
-
-    /* Lets try a nonblocking connect... */
-    if (connect(outsock, (const struct sockaddr *)&dest_addr, sizeof(dest_addr)) == -1) {
-        if (errno != EINPROGRESS) {
-            perror("Outbound socket goofup");
-            exit(-1);
-        }
-    }
-
-    c = init_conn(outsock);
-
-    /* Special state for outbound requests. */
-    c->mystate = my_connect;
-
-    /* We watch for a write to this guy to see if it succeeds */
-    add_conn_event(c, EV_WRITE);
-
-    fprintf(stdout, "Good so far. Outbound sock is init'ed and waiting\n");
-
-    return c;
-}
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
 static void sig_hup(const int sig)
@@ -839,9 +803,11 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     return p;
 }
 
-/* FIXME: Memory leak. Must free user/dbname */
-static void my_free_auth_packet(void *p)
+static void my_free_auth_packet(void *pkt)
 {
+    my_auth_packet *p = (my_auth_packet *)pkt;
+    if (p->databasename)
+        free(p->databasename);
     free(p);
 }
 
@@ -1777,6 +1743,50 @@ static int wire_packet(lua_State *L)
     return 0;
 }
 
+/* Outbound connection function */
+static int new_connect(lua_State *L)
+{
+    int outsock;
+    conn *c;
+    struct sockaddr_in dest_addr;
+    int flags = 1;
+    const char *ip_addr = luaL_checkstring(L, 1);
+    int port_num     = (int)luaL_checkinteger(L, 2);
+
+    fprintf(stdout, "Attempting outbound socket request\n");
+
+    outsock = socket(AF_INET, SOCK_STREAM, 0); /* check errors */
+
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(port_num);
+    dest_addr.sin_addr.s_addr = inet_addr(ip_addr);
+
+    set_sock_nonblock(outsock); /* check errors */
+
+    memset(&(dest_addr.sin_zero), '\0', 8);
+
+    setsockopt(outsock, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+
+    /* Lets try a nonblocking connect... */
+    if (connect(outsock, (const struct sockaddr *)&dest_addr, sizeof(dest_addr)) == -1) {
+        if (errno != EINPROGRESS) {
+            luaL_error(L, "Outbound socket goofup");
+        }
+    }
+
+    c = init_conn(outsock);
+
+    /* Special state for outbound requests. */
+    c->mystate = my_connect;
+
+    /* We watch for a write to this guy to see if it succeeds */
+    add_conn_event(c, EV_WRITE);
+
+    new_obj(L, c, "myp.conn");
+
+    return 1;
+}
+
 static int new_listener(lua_State *L)
 {
     struct sockaddr_in addr;
@@ -1784,7 +1794,7 @@ static int new_listener(lua_State *L)
     int flags = 1;
     int l_socket = 0;
     const char *ip_addr = luaL_checkstring(L, 1);
-    double port_num = luaL_checknumber(L, 2);
+    int port_num        = (int)luaL_checkinteger(L, 2);
 
     if ( (l_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
@@ -1831,6 +1841,7 @@ int main (int argc, char **argv)
     struct sigaction sa;
     static const struct luaL_Reg myp [] = {
         {"listener", new_listener},
+        {"connect", new_connect},
         {"wire_packet", wire_packet},
         {"check_pass", check_pass},
         {NULL, NULL},
