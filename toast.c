@@ -43,6 +43,7 @@ static int grow_write_buffer(conn *c, int newsize);
 static int sent_packet(conn *c, void **p, int ptype, int field_count);
 static int received_packet(conn *c, void **p, int *ptype, int field_count);
 
+/* Packet managers */
 static my_handshake_packet *my_consume_handshake_packet(conn *c);
 static void my_free_handshake_packet(void *p);
 static int my_wire_handshake_packet(conn *c, void *pkt);
@@ -53,6 +54,8 @@ static my_ok_packet *my_consume_ok_packet(conn *c);
 static void my_free_ok_packet(void *p);
 static int my_wire_ok_packet(conn *c, void *pkt);
 static my_err_packet *my_consume_err_packet(conn *c);
+static void my_free_err_packet(void *p);
+static int my_wire_err_packet(conn *c, void *pkt);
 static my_cmd_packet *my_consume_cmd_packet(conn *c);
 static my_rset_packet *my_consume_rset_packet(conn *c);
 static my_field_packet *my_consume_field_packet(conn *c);
@@ -1053,6 +1056,75 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
     return p;
 }
 
+static void my_free_err_packet(void *p)
+{
+    free(p);
+}
+
+void *my_new_err_packet()
+{
+    my_err_packet *p;
+
+    /* Clear out the struct. */
+    p = (my_err_packet *)malloc( sizeof(my_err_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_err_packet));
+
+    p->h.ptype = myp_err;
+    p->h.free_me = my_free_err_packet;
+    p->h.to_buf = my_wire_err_packet;
+
+    p->field_count = 255; /* Always 255 */
+
+    /* FIXME: Defaulting this to the "Access denied" error codes */
+    p->errnum = 1045;
+    strcpy(p->sqlstate, "28000");
+    strcpy(p->message, "Access denied for user 'whatever'@'whatever'");
+    
+    return p;
+}
+
+static int my_wire_err_packet(conn *c, void *pkt)
+{
+    my_err_packet *p = (my_err_packet *)pkt;
+    int base = c->towrite;
+    size_t my_size = strlen(p->message) + 1;
+
+    int psize = 13; /* misc chunks + header */
+    psize += my_size;
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
+    c->packet_seq++;
+
+    c->wbuf[base] = p->field_count;
+    base++;
+
+    int2store(&c->wbuf[base], p->errnum);
+    base += 2;
+
+    c->wbuf[base] = '#';
+    base++;
+
+    memcpy(&c->wbuf[base], p->sqlstate, 5);
+    base += 5;
+
+    memcpy(&c->wbuf[base], p->message, my_size);
+
+    return 0;
+}
+
 /* FIXME: There might be an "unknown error" state which changes the packet
  * payload.
  */
@@ -1071,12 +1143,13 @@ static my_err_packet *my_consume_err_packet(conn *c)
     memset(p, 0, sizeof(my_err_packet));
 
     p->h.ptype = myp_err;
-    /* FIXME: add free and store handlers */
+    p->h.free_me = my_free_err_packet;
+    p->h.to_buf = my_wire_err_packet;
 
-    p->field_count = c->rbuf[base];
+    p->field_count = c->rbuf[base]; /* Always 255... */
     base++;
 
-    memcpy(&p->errnum, &c->rbuf[base], 2);
+    p->errnum = uint2korr(&c->rbuf[base]);
     base += 2;
 
     p->marker = c->rbuf[base];
@@ -1094,15 +1167,13 @@ static my_err_packet *my_consume_err_packet(conn *c)
      */
     my_size = c->packetsize - (base - c->readto);
 
-    p->message = (char *)malloc( my_size + 1 );
-    if (p->message == 0) {
-        perror("Could not malloc()");
+    if (my_size > MYSQL_ERRMSG_SIZE - 1) {
+        fprintf(stderr, "Error message too large! [%d]\n", (int) my_size);
         return NULL;
     }
+
     memcpy(p->message, &c->rbuf[base], my_size);
     p->message[my_size] = '\0';
-
-    fprintf(stdout, "***PACKET*** Server Error Packet: %d\n%d\n%c\n%s\n%s\n", p->field_count, p->errnum, p->marker, p->sqlstate, p->message);
 
     return p;
 }

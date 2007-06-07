@@ -25,6 +25,10 @@ function client_got_auth(auth_pkt, cid)
         myp.wire_packet(clients[cid], ok_pkt)
     else
         print "OMFG passwords did NOT match!!!"
+        local err_pkt = myp.new_err_pkt()
+        callback[cid] = nil
+        myp.wire_packet(clients[cid], err_pkt)
+        clients[cid] = nil
     end
 
     storage[cid] = nil

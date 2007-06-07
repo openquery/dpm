@@ -58,6 +58,14 @@ static const obj_reg ok_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+static const obj_reg err_regs [] = {
+    {"field_count", obj_uint8_t, LO_READONLY, offsetof(my_err_packet, field_count), 0},
+    {"errnum", obj_uint16_t, LO_READWRITE, offsetof(my_err_packet, errnum), 0},
+    {"sqlstate", obj_string, LO_READWRITE, offsetof(my_err_packet, sqlstate), 0},
+    {"message", obj_string, LO_READWRITE, offsetof(my_err_packet, message), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", tmp_gc},
     {NULL, NULL},
@@ -68,6 +76,7 @@ static const obj_toreg regs [] = {
     {"myp.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
     {"myp.auth", auth_regs, generic_m, my_new_auth_packet, "new_auth_pkt"},
     {"myp.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
+    {"myp.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 

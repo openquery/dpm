@@ -242,7 +242,7 @@ typedef struct {
     uint16_t       errnum;
     char           marker; /* Always '#' */
     char           sqlstate[6]; /* Length is actually 5. +1 for \0 */
-    char          *message; /* Should be null terminated? */
+    char           message[MYSQL_ERRMSG_SIZE]; /* Should be null terminated? */
 } my_err_packet;
 
 typedef struct {
@@ -297,5 +297,6 @@ extern struct lua_State *L;
 void *my_new_handshake_packet();
 void *my_new_auth_packet();
 void *my_new_ok_packet();
+void *my_new_err_packet();
 
 #endif /* PROXY_H */
