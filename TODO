@@ -20,8 +20,8 @@ stages to server auth:
    ( 'outbound' is a conn struct )
 *- register callback for handshake packet return
 *- parse handshake packet, create auth packet object
- - C call for setting scramble for auth packet object
- - Write auth packet to wire
+*- C call for setting scramble for auth packet object
+*- Write auth packet to wire
  - Callback on waiting auth result. handle OK or ERR
 
 At this stage, client or server should be authenticated. register proper

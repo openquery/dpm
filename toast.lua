@@ -46,6 +46,14 @@ function new_client(c)
     storage[c:id()] = hs_pkt
 end
 
+function server_err(err_pkt, cid)
+    print("Backend error!", type(err_pkt), err_pkt:message(), cid)
+end
+
+function server_ready(ok_pkt, cid)
+    print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
+end
+
 function server_handshake(hs_pkt, cid)
     print "Got callback for server handshake packet"
 
@@ -56,6 +64,8 @@ function server_handshake(hs_pkt, cid)
 
     myp.wire_packet(backend, auth_pkt)
     -- Don't need to store anything, server will return 'ok' or 'err' packet.
+    callback[backend:id()] = {["Server waiting command"] = server_ready,
+                              ["Server got error"] = server_err,}
 end
 
 listen = myp.listener("127.0.0.1", 5500)

@@ -16,7 +16,7 @@
 #define MY_PORT 3306
 
 const char *my_state_name[]={
-    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sen ding fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake",
+    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sen ding fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake", "Server got error",
 };
 
 struct lua_State *L;
@@ -264,12 +264,14 @@ static int handle_read(conn *c)
             c->rbufsize *= 2;
         }
 
-        // while bytes from read, pack into buffer. return when would block
+        /* while bytes from read, pack into buffer. return when would block */
         rbytes = read(c->fd, c->rbuf + c->read, c->rbufsize - c->read);
 
         /* If signaled for reading and got zero bytes, close it up 
          * FIXME : Should we flush the command? */
-        if (rbytes == 0) {
+        if (rbytes == 0 && newdata) {
+            break;
+        } else if (rbytes == 0) {
             return -1;
         } else if (rbytes == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -334,7 +336,6 @@ static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
     conn *newc = NULL;
-    conn *newback = NULL;
     int newfd, rbytes, wbytes;
     int flags = 1;
     int err   = 0;
@@ -1083,6 +1084,8 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
         p->message = NULL;
     }
 
+    new_obj(L, p, "myp.ok");
+
     return p;
 }
 
@@ -1204,6 +1207,8 @@ static my_err_packet *my_consume_err_packet(conn *c)
 
     memcpy(p->message, &c->rbuf[base], my_size);
     p->message[my_size] = '\0';
+
+    new_obj(L, p, "myp.err");
 
     return p;
 }
@@ -1457,6 +1462,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             assert(ptype == myp_auth);
             c->mypstate = mys_sending_ok;
             break;
+        case mys_recv_err:
         case mys_wait_cmd:
             assert(ptype == myp_cmd);
             {
@@ -1529,6 +1535,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 *p = my_consume_ok_packet(c);
                 *ptype = myp_ok;
                 c->mypstate = mys_wait_cmd;
+                nargs++;
                 break;
             case 255:
                 *ptype = myp_err;
@@ -1599,7 +1606,8 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         if (*ptype == myp_err) {
             *p = my_consume_err_packet(c);
             c->packet_seq = 0;
-            c->mypstate = mys_wait_cmd;
+            c->mypstate = mys_recv_err;
+            nargs++;
         }
 
         if (c->mypstate == mys_wait_cmd) {
@@ -1703,7 +1711,6 @@ static int run_protocol(conn *c, int read, int written)
 
             /* Any pending packet reads? If none, reset boofer. */
             if (c->readto == c->read) {
-                //fprintf(stdout, "Resetting read buffer\n");
                 c->read    = 0;
                 c->readto  = 0;
                 c->mystate = my_waiting;
