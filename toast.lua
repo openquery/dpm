@@ -11,6 +11,8 @@ passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
 
 function client_ok(cid)
     print("Client ready!", cid)
+    -- Wipe any crazy callbacks. Act as a passthrough.
+    callback[cid] = nil
 end
 
 function client_got_auth(auth_pkt, cid)
@@ -23,6 +25,7 @@ function client_got_auth(auth_pkt, cid)
         -- auth"
         callback[cid] = {["Client waiting"] = client_ok}
         myp.wire_packet(clients[cid], ok_pkt)
+        myp.proxy_connect(clients[cid], backend)
     else
         print "OMFG passwords did NOT match!!!"
         local err_pkt = myp.new_err_pkt()
@@ -46,12 +49,18 @@ function new_client(c)
     storage[c:id()] = hs_pkt
 end
 
+function finished_command(cid)
+    print "Backend completed handling command."
+end
+
 function server_err(err_pkt, cid)
     print("Backend error!", type(err_pkt), err_pkt:message(), cid)
 end
 
 function server_ready(ok_pkt, cid)
     print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
+    callback[cid] = {["Server waiting command"] = finished_command}
+    callback[cid] = nil
 end
 
 function server_handshake(hs_pkt, cid)

@@ -16,7 +16,7 @@
 #define MY_PORT 3306
 
 const char *my_state_name[]={
-    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sen ding fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake", "Server got error",
+    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sending fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake", "Server got error",
 };
 
 struct lua_State *L;
@@ -82,6 +82,8 @@ static int check_pass(lua_State *L);
 static int crypt_pass(lua_State *L);
 static int wire_packet(lua_State *L);
 static int run_lua_callback(conn *c, int nargs);
+static int proxy_connect(lua_State *L);
+static int proxy_disconnect(lua_State *L);
 
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
@@ -1618,8 +1620,8 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     #ifdef DBUG_STATE
     fprintf(stdout, "END State: %s\n", my_state_name[c->mypstate]);
     #endif
-    run_lua_callback(c, nargs);
-    return ret;
+    //run_lua_callback(c, nargs);
+    return nargs;
 }
 
 /* Run the "MySQL" protocol on a socket. Generic state machine logic.
@@ -1696,6 +1698,7 @@ static int run_protocol(conn *c, int read, int written)
                     remote->towrite += c->packetsize;
                 }
 
+                run_lua_callback(c, ret);
                 /* Copied in the packet; advance to next packet. */
                 c->readto += c->packetsize;
                 }
@@ -1741,7 +1744,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     lua_getglobal(L, "callback");
     if (!lua_istable(L, -1)) {
-        lua_settop(L, top);
+        lua_settop(L, top - 1);
         return 0;
     }
 
@@ -1749,7 +1752,7 @@ static int run_lua_callback(conn *c, int nargs)
     lua_pushnumber(L, c->id);
     lua_gettable(L, -2);
     if (!lua_istable(L, -1)) {
-        lua_settop(L, top);
+        lua_settop(L, top - 1);
         return 0;
     }
 
@@ -1758,7 +1761,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     /* Now the top o' the stack ought to be a function. */
     if (!lua_isfunction(L, -1)) {
-        lua_settop(L, top);
+        lua_settop(L, top - 1);
         return 0;
     }
 
@@ -1805,6 +1808,40 @@ static int crypt_pass(lua_State *L)
 
     /* Encrypt the password into the authentication packet. */
     my_scramble((*auth)->scramble_buff, (*hs)->scramble_buff, plain_pass);
+
+    return 0;
+}
+
+/* LUA command for attaching a client with a backend. */
+static int proxy_connect(lua_State *L)
+{
+    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
+    conn **r = (conn **)luaL_checkudata(L, 2, "myp.conn");
+
+    if ((*c)->my_type != my_client ||
+        (*r)->my_type != my_server) {
+        luaL_error(L, "Arg 1 must be a client, Arg 2 must be a backend");
+    }
+
+    (*c)->remote = (struct conn *)*r;
+    (*r)->remote = (struct conn *)*c;
+
+    return 0;
+}
+
+/* LUA command for detaching a client and backend. */
+static int proxy_disconnect(lua_State *L)
+{
+    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
+    conn *r = NULL;
+
+    if ((*c)->my_type != my_client || !(*c)->remote) {
+        luaL_error(L, "Must specify a connected client to disconnect.");
+    }
+
+    r = (conn *) (*c)->remote;
+    r->remote = NULL;
+    (*c)->remote = NULL;
 
     return 0;
 }
@@ -1933,6 +1970,8 @@ int main (int argc, char **argv)
         {"wire_packet", wire_packet},
         {"check_pass", check_pass},
         {"crypt_pass", crypt_pass},
+        {"proxy_connect", proxy_connect},
+        {"proxy_disconnect", proxy_disconnect},
         {NULL, NULL},
     };
 
