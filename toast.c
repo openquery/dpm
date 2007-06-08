@@ -833,6 +833,7 @@ void *my_new_auth_packet()
     p->charset_number = 8;
     strcpy(p->user, "whee"); /* FIXME: Needs to be editable. */
     p->databasename = NULL; /* Don't need a default DB. */
+    p->scramble_buff[21] = '\0';
 
     return p;
 }
@@ -840,7 +841,7 @@ void *my_new_auth_packet()
 static int my_wire_auth_packet(conn *c, void *pkt)
 {
     my_auth_packet *p = (my_auth_packet *)pkt;
-    int psize = 54;
+    int psize = 53;
     size_t my_size = strlen(p->user) + 1;
     int base = c->towrite;
 
@@ -873,10 +874,11 @@ static int my_wire_auth_packet(conn *c, void *pkt)
     memcpy(&c->wbuf[base], p->user, my_size);
     base += my_size;
 
-    memcpy(&c->wbuf[base], p->scramble_buff, 21);
-    base += 21;
+    c->wbuf[base] = 20; /* Length of scramble buff. */
+    base++;
 
-    c->wbuf[base] = 0; /* More filler... */
+    memcpy(&c->wbuf[base], p->scramble_buff, 20);
+    base += 20;
 
     return 0;
 }
@@ -934,6 +936,9 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
     /* +1 to account for the \0 */
     base += my_size + 1;
 
+    /* FIXME: scramble_buf is random, so this can be zero?
+     * figure out a better way of parsing the data.
+     */
     /* If we don't have a scramble, leave it all zeroes. */
     if (c->rbuf[base] > 0) {
         memcpy(&p->scramble_buff, &c->rbuf[base + 1], 21);
