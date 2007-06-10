@@ -162,6 +162,7 @@ static void handle_close(conn *c)
         remote = (conn *)c->remote;
         remote->remote = NULL;
         handle_close(remote);
+        c->remote = NULL;
     }
 
     close(c->fd);
@@ -393,8 +394,6 @@ static void handle_event(int fd, short event, void *arg)
    
    if (event & EV_READ) {
         /* Client socket. */
-        fprintf(stdout, "Got new read event on %d\n", fd);
-
         rbytes = handle_read(c);
         /* FIXME : Should we do the error handling at this level? Or lower? */
         if (rbytes < 0) {
@@ -402,11 +401,9 @@ static void handle_event(int fd, short event, void *arg)
             return;
         }
 
-        //fprintf(stdout, "Read (%d) from sock\n", rbytes);
     }
 
     if (event & EV_WRITE) {
-        fprintf(stdout, "Got new write event on %d\n", fd);
         if (c->mystate != my_connect) {
           wbytes = handle_write(c);
 
@@ -1273,8 +1270,6 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
         p->extra = my_read_binary_field(c->rbuf, &base);
     }
 
-    fprintf(stdout, "***PACKET*** Client Resultset Packet: %llx\n%llx\n", (unsigned long long)p->field_count, (unsigned long long)p->extra);
-
     return p;
 }
 
@@ -1380,14 +1375,13 @@ static my_field_packet *my_consume_field_packet(conn *c)
         p->my_default = my_read_binary_field(c->rbuf, &base);
     }
 
-    fprintf(stdout, "***PACKET*** parsed field packet.\n");
     return p;
 }
 
 /* Placeholder */
 static int my_consume_row_packet(conn *c)
 {
-    //int base = c->readto + 4;
+    /* int base = c->readto + 4; */
     int i = 0;
 
     for (i = 4; i < c->packetsize; i++) {
@@ -1430,7 +1424,6 @@ static my_eof_packet *my_consume_eof_packet(conn *c)
     memcpy(&p->status_flags, &c->rbuf[base], 2);
     base += 2;
 
-    fprintf(stdout, "***PACKET*** parsed EOF packet.\n");
     return 0;
 }
 
@@ -1771,9 +1764,15 @@ static int run_lua_callback(conn *c, int nargs)
      * so pop them out and we should have the right order. */
     lua_pop(L, 2);
 
+    /* FIXME: Debug crap. */
+    if (!lua_isfunction(L, 1) || lua_gettop(L) < nargs + 1) {
+        fprintf(stderr, "ERRRRRRRRRROR running callback, dumping stack\n");
+        dump_stack();
+    }
+
     /* Finally, call the function? We should push some args too */
     if (lua_pcall(L, nargs, 0, 0) != 0) {
-        luaL_error(L, "Error running callback function: %s", lua_tostring(L, -1));
+        fprintf(stderr, "Error running callback function: %s\n", lua_tostring(L, -1));
     }
     lua_settop(L, top - nargs);
 
@@ -1835,8 +1834,8 @@ static int proxy_disconnect(lua_State *L)
     conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
     conn *r = NULL;
 
-    if ((*c)->my_type != my_client || !(*c)->remote) {
-        luaL_error(L, "Must specify a connected client to disconnect.");
+    if (!(*c)->remote) {
+        luaL_error(L, "Must specify a connected client/server to disconnect.");
     }
 
     r = (conn *) (*c)->remote;
@@ -1877,8 +1876,6 @@ static int new_connect(lua_State *L)
     int flags = 1;
     const char *ip_addr = luaL_checkstring(L, 1);
     int port_num     = (int)luaL_checkinteger(L, 2);
-
-    fprintf(stdout, "Attempting outbound socket request\n");
 
     outsock = socket(AF_INET, SOCK_STREAM, 0); /* check errors */
 

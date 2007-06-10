@@ -12,7 +12,7 @@ passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
 function client_ok(cid)
     print("Client ready!", cid)
     -- Wipe any crazy callbacks. Act as a passthrough.
-    callback[cid] = nil
+    callback[cid] = {["Client waiting"] = new_command}
 end
 
 function client_got_auth(auth_pkt, cid)
@@ -44,13 +44,18 @@ function new_client(c)
     callback[c:id()] = {["Client waiting"] = client_got_auth}
 
     local hs_pkt = myp.new_handshake_pkt()
-    print("Built a new handshake packet!", type(hs_pkt), hs_pkt:protocol_version(), hs_pkt:server_version())
     myp.wire_packet(c, hs_pkt)
     storage[c:id()] = hs_pkt
 end
 
+function new_command(cid)
+    print "reconnecting client to a backend"
+    myp.proxy_connect(clients[cid], backend)
+end
+
 function finished_command(cid)
     print "Backend completed handling command."
+    myp.proxy_disconnect(backend)
 end
 
 function server_err(err_pkt, cid)
@@ -60,15 +65,13 @@ end
 function server_ready(ok_pkt, cid)
     print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
     callback[cid] = {["Server waiting command"] = finished_command}
-    callback[cid] = nil
+    -- callback[cid] = nil
 end
 
 function server_handshake(hs_pkt, cid)
     print "Got callback for server handshake packet"
 
     local auth_pkt = myp.new_auth_pkt()
-    print("Built new auth packet!", type(auth_pkt), auth_pkt:user())
-
     myp.crypt_pass(auth_pkt, hs_pkt, "toast")
 
     myp.wire_packet(backend, auth_pkt)
@@ -78,7 +81,6 @@ function server_handshake(hs_pkt, cid)
 end
 
 listen = myp.listener("127.0.0.1", 5500)
-print("listener data: ", listen:id(), listen:listener())
 callback[listen:id()] = {["Client connect"] = new_client}
 
 backend = myp.connect("127.0.0.1", 3306)
