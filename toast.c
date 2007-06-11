@@ -16,7 +16,22 @@
 #define MY_PORT 3306
 
 const char *my_state_name[]={
-    "Server connect", "Client connect", "Server sent handshake", "Client wait handshake", "Client waiting", "Server Waiting", "Client sent command", "Server sending fields", "Server sending rows", "Server waiting auth", "Server sending OK", "Server waiting command", "Server sending resultset", "Client waiting auth", "S erver sending handshake", "Server got error",
+    "Server connect", 
+    "Client connect", 
+    "Server sent handshake", 
+    "Client wait handshake", 
+    "Client waiting", 
+    "Server Waiting", 
+    "Client sent command", 
+    "Server sending fields", 
+    "Server sending rows", 
+    "Server waiting auth", 
+    "Server sending OK", 
+    "Server waiting command", 
+    "Server sending resultset", 
+    "Client waiting auth", 
+    "Server sending handshake", 
+    "Server got error",
 };
 
 struct lua_State *L;
@@ -1446,6 +1461,9 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
          * clients from lua without going crazy and pulling out all your hair.
          */
         switch (c->mypstate) {
+        case myc_sent_cmd:
+            c->mypstate = myc_waiting; /* FIXME: Should be reading results */
+            break;
         case myc_wait_handshake:
             assert(ptype == myp_handshake);
             c->mypstate = myc_wait_auth;
@@ -1513,6 +1531,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         case myc_waiting:
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
+            c->mypstate = myc_sent_cmd;
             break;
         }
         break;

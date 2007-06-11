@@ -1,8 +1,12 @@
 PRACTICE:
 
+separate _callback_ stacks for whether it was a received or sent packet.
+start using callback return codes... PASS_THROUGH to pass a packet through to
+remote without editing (avoid calling to_wire)
+RUN_UNTIL - somehow set the next state before packet is fully parsed again
+start really garbage collecting all generated packets.
+_if parsed_ - make sure it goes up into lua. make sure __gc works as expected.
 handle case of client not supplying password, user not needing one
-add "attach to" C call for lua for attaching a proxy
-have lua make backend connects and attach
 
 stages to client auth:
 *- on handle of new client, create handshake packet object
@@ -22,10 +26,7 @@ stages to server auth:
 *- parse handshake packet, create auth packet object
 *- C call for setting scramble for auth packet object
 *- Write auth packet to wire
- - Callback on waiting auth result. handle OK or ERR
-
-At this stage, client or server should be authenticated. register proper
-callbacks. fill in the holes.
+*- Callback on waiting auth result. handle OK or ERR
 
 BONUS: Filter flags out of client abilities that we can't handle.
 

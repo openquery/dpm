@@ -12,7 +12,8 @@ passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
 function client_ok(cid)
     print("Client ready!", cid)
     -- Wipe any crazy callbacks. Act as a passthrough.
-    callback[cid] = {["Client waiting"] = new_command}
+    callback[cid] = {["Client waiting"] = nil, 
+                     ["Client sent command"] = new_command}
 end
 
 function client_got_auth(auth_pkt, cid)
