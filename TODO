@@ -1,8 +1,8 @@
 PRACTICE:
 
-separate _callback_ stacks for whether it was a received or sent packet.
-start using callback return codes... PASS_THROUGH to pass a packet through to
-remote without editing (avoid calling to_wire)
+don't allow connecting a backend if the conn is invalid
+connection close callback
+better mechanism for detecting closed conn?
 RUN_UNTIL - somehow set the next state before packet is fully parsed again
 start really garbage collecting all generated packets.
 _if parsed_ - make sure it goes up into lua. make sure __gc works as expected.
