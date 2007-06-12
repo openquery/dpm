@@ -16,6 +16,7 @@
  --  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 -- Hello-world style initialization script for proxy.
+-- See bottom of file for connection, listening information.
 
 -- Name -> value defines for lua
 dofile ("defines.lua")
@@ -84,7 +85,6 @@ end
 function server_ready(ok_pkt, cid)
     print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
     callback[cid] = {["Server waiting command"] = finished_command}
-    -- callback[cid] = nil
 end
 
 function server_handshake(hs_pkt, cid)
@@ -99,9 +99,12 @@ function server_handshake(hs_pkt, cid)
                               ["Server got error"] = server_err,}
 end
 
+-- Set up the listener, register a callback for new clients.
 listen = myp.listener("127.0.0.1", 5500)
 callback[listen:id()] = {["Client connect"] = new_client}
 
+-- Fire off the backend. NOTE that this won't retry or event print decent
+-- errors if it fails :)
 backend = myp.connect("127.0.0.1", 3306)
 callback[backend:id()] = {["Server waiting auth"] = server_handshake}
 
