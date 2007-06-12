@@ -1,6 +1,5 @@
 Blockers for release-1:
 
-- Makefile
 - Reorganize files
 - Fix stability bugs
 - Create command packet so lua may at least inspect in-flight SQL
@@ -32,7 +31,6 @@ they're not supported)
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 more libevent infrastructure; timers
 memory management; caching connection structs. malloc big range. reuse buffers.
-write a makefile
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
