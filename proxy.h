@@ -158,6 +158,10 @@ enum my_types {
     my_client, /* This conn is a client connection */
 };
 
+#define MYP_OK 0
+#define MYP_NOPROXY 1
+#define MYP_FLUSH_DISCONNECT 2
+
 /* Structs... */
 typedef struct {
     int    fd;

@@ -779,8 +779,6 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
     memcpy(p->server_version, &c->rbuf[base], my_size);
     base += my_size;
 
-    /* TODO: I think technically I can do this with one memcpy. */
-
     /* 4 byte thread id */
     p->thread_id = uint4korr(&c->rbuf[base]);
     base += 4;
@@ -1647,8 +1645,6 @@ static int run_protocol(conn *c, int read, int written)
     socklen_t errsize = sizeof(err);
     conn *remote = NULL;
 
-    //fprintf(stdout, "Running protocol state machine\n");
-
     while (!finished) {
         switch (c->mystate) {
         case my_connect:
@@ -1689,6 +1685,7 @@ static int run_protocol(conn *c, int read, int written)
                 int ptype = myp_none;
                 void *p = NULL;
                 int ret = 0;
+                int cbret;
                 /* Drive the packet state machine. */
                 ret = received_packet(c, &p, &ptype, c->rbuf[c->readto + 4]);
 
@@ -1696,8 +1693,10 @@ static int run_protocol(conn *c, int read, int written)
                  * check that a pointer was returned. */
                 /* if (p == NULL) return -1; */
 
+                cbret = run_lua_callback(c, ret);
+
                 /* Handle writing to a remote if one exists */
-                if (c->remote) {
+                if ( c->remote && ( cbret == MYP_OK || cbret == MYP_FLUSH_DISCONNECT ) ) {
                     remote = (conn *)c->remote;
                     if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
                         return -1;
@@ -1705,12 +1704,19 @@ static int run_protocol(conn *c, int read, int written)
 
                     /* Drive other half of state machine. */
                     ret = sent_packet(remote, &p, ptype, c->field_count);
-
+                    /* TODO: at this point we could decide not to send a
+                     * packet. worth investigating?
+                     */
                     memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
                     remote->towrite += c->packetsize;
                 }
 
-                run_lua_callback(c, ret);
+                /* Flush (above) and disconnect the conns */
+                if (cbret == MYP_FLUSH_DISCONNECT) {
+                    remote->remote = NULL;
+                    c->remote      = NULL;
+                }
+
                 /* Copied in the packet; advance to next packet. */
                 c->readto += c->packetsize;
                 }
@@ -1745,7 +1751,7 @@ static int run_protocol(conn *c, int read, int written)
  */
 static int run_lua_callback(conn *c, int nargs)
 {
-    int top = 0;
+    int ret, top = 0;
 
     fprintf(stdout, "Running callback [%s] on conn id %llu\n", my_state_name[c->mypstate], (unsigned long long) c->id);
 
@@ -1777,9 +1783,8 @@ static int run_lua_callback(conn *c, int nargs)
         return 0;
     }
 
-    /* Do the argument shuffle! */
     lua_insert(L, 1);
-    /* Function's on the bottom, but two levels of callback table are above.
+    /* Function's now on the bottom, but two levels of callback table are above.
      * so pop them out and we should have the right order. */
     lua_pop(L, 2);
 
@@ -1787,15 +1792,26 @@ static int run_lua_callback(conn *c, int nargs)
     if (!lua_isfunction(L, 1) || lua_gettop(L) < nargs + 1) {
         fprintf(stderr, "ERRRRRRRRRROR running callback, dumping stack\n");
         dump_stack();
+        return 0;
     }
 
     /* Finally, call the function? We should push some args too */
-    if (lua_pcall(L, nargs, 0, 0) != 0) {
+    if (lua_pcall(L, nargs, 1, 0) != 0) {
         fprintf(stderr, "Error running callback function: %s\n", lua_tostring(L, -1));
+        lua_pop(L, -1);
+        dump_stack();
     }
-    lua_settop(L, top - nargs);
 
-    return 0;
+    if (lua_isnumber(L, -1)) {
+        ret = (int) lua_tointeger(L, -1);
+        lua_pop(L, 1);
+    } else {
+        /* nil gets returned, since we expect one value. */
+        lua_pop(L, 1);
+        ret = MYP_OK; /* Default to an R_OK response. */
+    }
+
+    return ret;
 }
 
 /* LUA command for verifying a password hash.

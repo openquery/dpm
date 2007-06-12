@@ -26,7 +26,7 @@ function client_got_auth(auth_pkt, cid)
         -- auth"
         callback[cid] = {["Client waiting"] = client_ok}
         myp.wire_packet(clients[cid], ok_pkt)
-        myp.proxy_connect(clients[cid], backend)
+        -- myp.proxy_connect(clients[cid], backend)
     else
         print "OMFG passwords did NOT match!!!"
         local err_pkt = myp.new_err_pkt()
@@ -56,7 +56,8 @@ end
 
 function finished_command(cid)
     print "Backend completed handling command."
-    myp.proxy_disconnect(backend)
+    return MYP_FLUSH_DISCONNECT
+    -- myp.proxy_disconnect(backend)
 end
 
 function server_err(err_pkt, cid)
