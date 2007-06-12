@@ -8,6 +8,7 @@ Blockers for release-1:
 - Non-parsing "proxy" mode (optional)
 - Shut up the verbosity. Add -v or -d flag to make some of it come back
   (optional)
+(after release) gitweb.cgi setup
 
 Nice, meaty TODO:
 
