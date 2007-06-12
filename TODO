@@ -1,4 +1,13 @@
-PRACTICE:
+Blockers for release-1:
+
+- Makefile
+- Reorganize files
+- Fix stability bugs
+- Create command packet so lua may at least inspect in-flight SQL
+- Garbage collect packets
+- Non-parsing "proxy" mode (optional)
+
+Nice, meaty TODO:
 
 don't allow connecting a backend if the conn is invalid
 connection close callback
@@ -8,51 +17,29 @@ start really garbage collecting all generated packets.
 _if parsed_ - make sure it goes up into lua. make sure __gc works as expected.
 handle case of client not supplying password, user not needing one
 
-stages to client auth:
-*- on handle of new client, create handshake packet object
-   ( requires client object, handshake packet object )
-*- Set callback handler for auth return
-*- Write handshake packet to wire
-*- Upon auth return, receive conn obj and auth pkt
-*- C call for checking the scramble stage against an argument string
-   (PASSWORD("whatever") hash)
-*- Create/send OK and Err packets
- - support for __gc to close a connection (or setting it to nil) (TODO: Shit proper error to wire)
-
-stages to server auth:
-*- request new outbound connection: outbound = new_backend("ip", port)
-   ( 'outbound' is a conn struct )
-*- register callback for handshake packet return
-*- parse handshake packet, create auth packet object
-*- C call for setting scramble for auth packet object
-*- Write auth packet to wire
-*- Callback on waiting auth result. handle OK or ERR
-
 BONUS: Filter flags out of client abilities that we can't handle.
 
 need a "verify" conn obj method that barfs if client conn was closed
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
 write packet-free routines. Clean up the memory leak I created.
-intercept and set flags properly for compression/prepare support disabling
 WORK ## implement mysql's password crypto handshake
 learn to handle large mysql packets (at least identify them, and bomb saying
 they're not supported)
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 more libevent infrastructure; timers
-memory management; caching connection shit. malloc big range. reuse buffers.
+memory management; caching connection structs. malloc big range. reuse buffers.
 write a makefile
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
-use struct buffer sizes from mysql_com.h
 
+DONE ### use struct buffer sizes from mysql_com.h
 DONE ### flesh out obj_index to handle read/write correctly.
 DONE ### add read/write defines
 DONE ## create working accessors for int, uint64_t, uint32_t, enum flag, bit flag
 WORK ## create working accessors for uint16_t, uint8_t, null terminated strings
 WORK ## create working accessor for length encoded strings
 WORK ## attach __gc methods to free objects
-
 DONE ### move con and definition structures to toast.h
 DONE ### fix username reading; add +1 to my_size so it gets the \0
 DONE ### use multiple .c files to make the program.
