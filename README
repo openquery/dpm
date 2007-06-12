@@ -1,0 +1,72 @@
+Dormando's [crappy] Proxy for MySQL
+Copyright 2007 Dormando (dormando@rydia.net)
+
+This code is presently a "preview" release. Enjoy it as a demo, at your own
+risk, and don't complain if it's missing features. This code is marked by
+GPLv2, with some parts LGPL and some parts public domain. The files with
+alternative licenses are marked as such, by the original authors.
+
+This code is a general, scriptable proxy which speaks the MySQL protocol
+version "10", found in MySQL 5.0. The protocol is exposed at a low level into
+the scripting language Lua, from which one may do many cool things.
+
+The demo this codebase is able to do right now is a basic proxy trick. Connect
+two mysql clients to the proxy, and "SHOW PROCESSLIST" will only show one
+connection. Run 'use databasename' in one, 'show tables' in the other, and you
+should see the table list. It won't do much else due to crash bugs, but this
+is enough to prove that the whole mechanics work.
+
+The proxy is built as an event-based network daemon using libevent, and the
+scripting language is vanilla Lua 5.1.
+
+BUILDING THE PROXY
+------------------
+
+I've only compiled this thing on Gentoo AMD64, so if it works for you, lucky
+you! Building is straight forward:
+
+- Install the latest libevent library.
+- Install the latest lua 5.1 release.
+- Run './build' from within the codebase.
+
+Once it is built, you may run it by typing './dpm' from within the codebase
+directory. This is necessary since it loads a couple .lua files locally.
+
+RUNNING THE DEMO
+----------------
+
+The included "demo" startup file connects back to a mysqld running on
+127.0.0.1 port 3306, using username 'whee' with password 'toast' - you may
+edit the startup.lua file to whatever you please if you need to change this.
+As long as the daemon is a recent version of MySQL 5.0, it should work fine.
+
+There is a client password hash included in the startup.lua file as well. This
+is the stored hash of what clients will have to authenticate against the
+proxy. Any auth and protection schemes are handled completely within lua. If
+you want to change the username/password combo, edit the startup.lua file
+accordingly. To create a new hash: `SELECT PASSWORD('whatever')` from a mysql
+client will get what you need.
+
+- Start up the demo, verify that the last line is "Backend ready!" If not,
+  troubleshoot until you can connect to mysqld.
+
+- By default the proxy will listen on 127.0.0.1 port 5500, this is editable
+  from within startup.lua as well. There's presently no option to listen on
+  INADDR_ANY, sorry.
+
+- Connect two mysql CLI clients to the proxy. Run a few basic commands,
+  *don't* run \s since it's unsupported right now. Run 'show processlist' a
+  few times, select a couple rows from small tables, and watch the output fly
+  by in the window.
+
+FEEDBACK
+--------
+
+Please give me _constructive_ feedback! I know the code sucks, I can grasp
+that I'm doing terrible horrific awful atrocities to the C language. The point
+here is the code released works, it might not work well, but it works. I'm
+keenly interested in hearing suggestions, directions, detailed bug reports,
+and ideas on how to fix bugs or add features.
+
+Drop an e-mail at dormando@rydia.net with your comments. I'm also on various
+chat services, livejournal, freenode IRC, etc.
