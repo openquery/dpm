@@ -2062,7 +2062,7 @@ int main (int argc, char **argv)
     luaL_register(L, "myp", myp);
     register_obj_types(L); /* Internal call to fill all custom metatables */
 
-    if (luaL_dofile(L, "toast.lua")) {
+    if (luaL_dofile(L, "startup.lua")) {
         fprintf(stdout, "Could not run lua initializer: %s\n", lua_tostring(L, -1));
         lua_pop(L, 1);
         return -1;
