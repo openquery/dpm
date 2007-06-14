@@ -169,7 +169,7 @@ static int update_conn_event(conn *c, const int new_flags)
 static int handle_accept(int fd)
 {
     struct sockaddr_in addr;
-    socklen_t addrlen;
+    socklen_t addrlen = 0;
     int newfd;
 
     if ( (newfd = accept(fd, (struct sockaddr *)&addr, &addrlen)) == -1) {
@@ -1497,6 +1497,8 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
             c->last_cmd   = cmd->command;
+            /* Kick off the packet sequencer. */
+            c->packet_seq++;
             switch (c->last_cmd) {
             case COM_QUERY:
                 c->mypstate = mys_sending_rset;

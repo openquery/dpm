@@ -1,7 +1,7 @@
 Blockers for release-1:
 
-- Reorganize files
 - Fix stability bugs
+- Reorganize files
 - Create command packet so lua may at least inspect in-flight SQL
 - Garbage collect packets
 - Non-parsing "proxy" mode (optional)
