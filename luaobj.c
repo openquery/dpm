@@ -84,6 +84,12 @@ static const obj_reg err_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+static const obj_reg cmd_regs [] = {
+    {"command", obj_uint8_t, LO_READWRITE, offsetof(my_cmd_packet, command), 0},
+    {"argument", obj_string, LO_READWRITE, offsetof(my_cmd_packet, argument), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", tmp_gc},
     {NULL, NULL},
@@ -95,6 +101,7 @@ static const obj_toreg regs [] = {
     {"myp.auth", auth_regs, generic_m, my_new_auth_packet, "new_auth_pkt"},
     {"myp.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
     {"myp.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
+    {"myp.cmd", cmd_regs, generic_m, my_new_cmd_packet, "new_cmd_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 

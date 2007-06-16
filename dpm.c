@@ -94,6 +94,9 @@ static void my_free_err_packet(void *pkt);
 static int my_wire_err_packet(conn *c, void *pkt);
 
 static my_cmd_packet *my_consume_cmd_packet(conn *c);
+static void my_free_cmd_packet(void *pkt);
+static int my_wire_cmd_packet(conn *c, void *pkt);
+
 static my_rset_packet *my_consume_rset_packet(conn *c);
 static my_field_packet *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
@@ -1258,6 +1261,51 @@ static my_err_packet *my_consume_err_packet(conn *c)
     return p;
 }
 
+void *my_new_cmd_packet()
+{
+    my_cmd_packet *p;
+
+    /* Clear out the struct. */
+    p = (my_cmd_packet *)malloc( sizeof(my_cmd_packet) );
+    if (p == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_cmd_packet));
+
+    p->h.ptype   = myp_cmd;
+    p->h.free_me = my_free_cmd_packet;
+    p->h.to_buf  = my_wire_cmd_packet;
+
+    p->command = COM_QUERY;
+
+    /* FIXME: Stupid default. */
+    p->argument = (char *)malloc( 75 );
+    if (p->argument == 0) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+
+    strcpy(p->argument, "select @@version limit 1");
+
+    return p;
+}
+
+static void my_free_cmd_packet(void *pkt)
+{
+    my_cmd_packet *p = (my_cmd_packet *)pkt;
+    free(p->argument);
+    free(p);
+}
+
+/* Stubbed for now. No point in being able to wire it until we can manipulate
+ * strings from within lua. FIXME FIXME FIXME
+ */
+static int my_wire_cmd_packet(conn *c, void *pkt)
+{
+    return 0;
+}
+
 static my_cmd_packet *my_consume_cmd_packet(conn *c)
 {
     my_cmd_packet *p;
@@ -1272,25 +1320,26 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
     }
     memset(p, 0, sizeof(my_cmd_packet));
 
-    p->h.ptype = myp_cmd;
-    /* FIXME: add free and store handlers */
+    p->h.ptype   = myp_cmd;
+    p->h.free_me = my_free_cmd_packet;
+    p->h.to_buf  = my_wire_cmd_packet;
 
     p->command = c->rbuf[base];
     base++;
 
     my_size = c->packetsize - (base - c->readto);
 
-    p->arg = (unsigned char *)malloc( my_size + 1 );
-    if (p->arg == 0) {
+    p->argument = (char *)malloc( my_size + 1 );
+    if (p->argument == 0) {
         perror("Could not malloc()");
         return NULL;
     }
-    memcpy(p->arg, &c->rbuf[base], my_size);
-    p->arg[my_size] = '\0';
+    memcpy(p->argument, &c->rbuf[base], my_size);
+    p->argument[my_size] = '\0';
 
-    /* FIXME: Decide whether or not to print this kind of crap. */
-    /* fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p->command, p->arg); */
-    
+    fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p->command, p->argument);
+
+    new_obj(L, p, "myp.cmd");
 
     return p;
 }
@@ -1568,6 +1617,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
             c->mypstate = myc_sent_cmd;
+            nargs++;
             break;
         }
         break;

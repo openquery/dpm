@@ -271,7 +271,7 @@ typedef struct {
 typedef struct {
     my_packet_header h;
     uint8_t        command; /* Flags describe this. */
-    unsigned char *arg;     /* Non-null-terminated string that was the cmd */
+    char *argument;     /* Non-null-terminated string that was the cmd */
 } my_cmd_packet;
 
 typedef struct {
@@ -321,5 +321,6 @@ void *my_new_handshake_packet();
 void *my_new_auth_packet();
 void *my_new_ok_packet();
 void *my_new_err_packet();
+void *my_new_cmd_packet();
 
 #endif /* PROXY_H */

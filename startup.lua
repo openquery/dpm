@@ -67,8 +67,13 @@ function new_client(c)
     storage[c:id()] = hs_pkt
 end
 
-function new_command(cid)
-    print "reconnecting client to a backend"
+function new_command(cmd_pkt, cid)
+    -- FIXME: cmd_pkt's argument value isn't copied into lua correctly.
+    print("reconnecting client to a backend", cmd_pkt:argument(), cmd_pkt:command())
+    if (cmd_pkt:command() == 1) then
+        -- allow the client to close, but don't close the server.
+        return MYP_NOPROXY
+    end
     myp.proxy_connect(clients[cid], backend)
 end
 
