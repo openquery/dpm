@@ -1,11 +1,10 @@
 Blockers for release-1:
 
-- Fix stability bugs
 - Reorganize files
-- Create command packet so lua may at least inspect in-flight SQL
+*(bugged)- Create command packet so lua may at least inspect in-flight SQL
 - Garbage collect packets
 - Non-parsing "proxy" mode (optional)
-- Shut up the verbosity. Add -v or -d flag to make some of it come back
+*(almost)- Shut up the verbosity. Add -v or -d flag to make some of it come back
   (optional)
 (after release) gitweb.cgi setup
 
