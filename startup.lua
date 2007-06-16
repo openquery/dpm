@@ -84,7 +84,8 @@ end
 
 function server_ready(ok_pkt, cid)
     print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
-    callback[cid] = {["Server waiting command"] = finished_command}
+    callback[cid] = {["Server waiting command"] = finished_command,
+                     ["Server got error"] = finished_command}
 end
 
 function server_handshake(hs_pkt, cid)

@@ -25,7 +25,7 @@
 
 /* Internal defines */
 
-#undef DBUG_STATE
+#undef DBUG
 
 #define BUF_SIZE 2048
 
@@ -1288,7 +1288,9 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
     memcpy(p->arg, &c->rbuf[base], my_size);
     p->arg[my_size] = '\0';
 
-    fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p->command, p->arg);
+    /* FIXME: Decide whether or not to print this kind of crap. */
+    /* fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p->command, p->arg); */
+    
 
     return p;
 }
@@ -1428,6 +1430,7 @@ static my_field_packet *my_consume_field_packet(conn *c)
 static int my_consume_row_packet(conn *c)
 {
     /* int base = c->readto + 4; */
+    /* FIXME: Do something with this crap. 
     int i = 0;
 
     for (i = 4; i < c->packetsize; i++) {
@@ -1440,7 +1443,7 @@ static int my_consume_row_packet(conn *c)
     
     fprintf(stdout, "\n");
 
-    fprintf(stdout, "***PACKET*** parsed row packet.\n");
+    fprintf(stdout, "***PACKET*** parsed row packet.\n");*/
     return 0;
 }
 
@@ -1481,7 +1484,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 {
     int ret = 0;
 
-    #ifdef DBUG_STATE
+    #ifdef DBUG
     fprintf(stdout, "START State: %s\n", my_state_name[c->mypstate]);
     #endif
     switch (c->my_type) {
@@ -1534,7 +1537,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
         }
     }
 
-    #ifdef DBUG_STATE
+    #ifdef DBUG
     fprintf(stdout, "END State: %s\n", my_state_name[c->mypstate]);
     #endif
     run_lua_callback(c, 0);
@@ -1549,7 +1552,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
 {
     int ret = 0;
     int nargs = 0;
-    #ifdef DBUG_STATE
+    #ifdef DBUG
     fprintf(stdout, "START State: %s\n", my_state_name[c->mypstate]);
     #endif
     switch (c->my_type) {
@@ -1668,7 +1671,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         }
     }
 
-    #ifdef DBUG_STATE
+    #ifdef DBUG
     fprintf(stdout, "END State: %s\n", my_state_name[c->mypstate]);
     #endif
     //run_lua_callback(c, nargs);
@@ -1794,7 +1797,9 @@ static int run_lua_callback(conn *c, int nargs)
 {
     int ret, top = 0;
 
+    #ifdef DBUG
     fprintf(stdout, "Running callback [%s] on conn id %llu\n", my_state_name[c->mypstate], (unsigned long long) c->id);
+    #endif
 
     lua_pushinteger(L, c->id);
     nargs++;
