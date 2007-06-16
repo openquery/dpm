@@ -27,7 +27,8 @@ you! Building is straight forward:
 
 - Install the latest libevent library.
 - Install the latest lua 5.1 release.
-- Run './build' from within the codebase.
+- Run 'make' from within the codebase.
+- Run 'make clean' to clear things up if necessary.
 
 Once it is built, you may run it by typing './dpm' from within the codebase
 directory. This is necessary since it loads a couple .lua files locally.
