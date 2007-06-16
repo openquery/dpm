@@ -191,15 +191,17 @@ static void handle_close(conn *c)
     assert(c != 0);
     event_del(&c->ev);
 
+    /* Release a connected remote connection.
+     * FIXME: Is this detectable from within lua?
+     */
     if (c->remote) {
         remote = (conn *)c->remote;
         remote->remote = NULL;
-        handle_close(remote);
         c->remote = NULL;
     }
 
     close(c->fd);
-    fprintf(stdout, "Closed connection for %u\n", c->fd);
+    fprintf(stdout, "Closed connection for %llu\n", (unsigned long long) c->id);
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
@@ -341,6 +343,18 @@ static conn *init_conn(int newfd)
     newc->ev_flags = EV_READ | EV_PERSIST;
     newc->mystate = my_waiting;
     newc->mypstate = my_waiting;
+
+    /* Misc inits, for clarity. */
+    newc->read        = 0;
+    newc->readto      = 0;
+    newc->written     = 0;
+    newc->towrite     = 0;
+    newc->my_type     = my_client;
+    newc->packetsize  = 0;
+    newc->field_count = 0;
+    newc->last_cmd    = 0;
+    newc->packet_seq  = 0;
+    newc->listener    = 0;
 
     /* Set up the buffers. */
     newc->rbufsize = BUF_SIZE;
@@ -628,13 +642,14 @@ static int my_check_scramble(const unsigned char *remote_scram, const unsigned c
  * return the starting position. */
 static int my_next_packet_start(conn *c)
 {
-    if (c->readto == c->read) {
+    /* A couple sanity checks... First is that we must have enough bytes
+     * readable to try consuming a header. */
+    if (c->readto + 4 > c->read)
         return -1;
-    }
     my_consume_header(c);
-    if (c->read >= c->packetsize) {
+
+    if (c->read >= c->packetsize)
         return c->readto;
-    }
     return -1;
 }
 
@@ -1632,6 +1647,12 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 break;
             }
             break;
+        case mys_wait_cmd:
+            /* Should never get here! Server must have a command when sending
+             * results!
+             */
+            assert(1 == 0);
+            break;
         }
 
         /* Read errors if we detected an error packet. */
@@ -1700,7 +1721,7 @@ static int run_protocol(conn *c, int read, int written)
              */
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-                fprintf(stdout, "Read from %d packet size %u.\n", c->fd, c->packetsize);
+                fprintf(stdout, "Read from %llu packet size %u.\n", (unsigned long long) c->id, c->packetsize);
                 {
                 int ptype = myp_none;
                 void *p = NULL;
