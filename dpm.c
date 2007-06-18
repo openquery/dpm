@@ -1774,12 +1774,15 @@ static int run_protocol(conn *c, int read, int written)
              */
 
             while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-                fprintf(stdout, "Read from %llu packet size %u.\n", (unsigned long long) c->id, c->packetsize);
-                {
                 int ptype = myp_none;
                 void *p = NULL;
                 int ret = 0;
                 int cbret;
+
+                #ifdef DBUG
+                fprintf(stdout, "Read from %llu packet size %u.\n", (unsigned long long) c->id, c->packetsize);
+                #endif
+
                 /* Drive the packet state machine. */
                 ret = received_packet(c, &p, &ptype, c->rbuf[c->readto + 4]);
 
@@ -1813,7 +1816,6 @@ static int run_protocol(conn *c, int read, int written)
 
                 /* Copied in the packet; advance to next packet. */
                 c->readto += c->packetsize;
-                }
             }
             if (c == NULL)
                 break;
