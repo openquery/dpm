@@ -1,5 +1,11 @@
 Blockers for release-1:
 
+BUGS TO KILL:
+ - (first?) time buffers are sized, large queries tend to fail (MALFORMED
+   PACKET)
+ - Client->proxy handshake fails randomly.
+ - Really need a callback on handle_close, feels like a bug without it.
+
 - Reorganize files
 *(bugged)- Create command packet so lua may at least inspect in-flight SQL
 - Garbage collect packets
@@ -7,6 +13,12 @@ Blockers for release-1:
 *(almost)- Shut up the verbosity. Add -v or -d flag to make some of it come back
   (optional)
 (after release) gitweb.cgi setup
+
+- Need new luaobj string handlers:
+  - One for a non-pointer string (*whatever)
+  - One for a pointer string (**whatever?)
+  - One for each that uses a message_len instead of strlen
+  - One for each that uses a DEFINE for max length.
 
 Nice, meaty TODO:
 
