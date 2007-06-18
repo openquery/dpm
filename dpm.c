@@ -2122,10 +2122,14 @@ int main (int argc, char **argv)
     sa.sa_flags   = 0;
     if (sigemptyset(&sa.sa_mask) == -1 || sigaction(SIGPIPE, &sa, 0) == -1) {
         perror("Could not ignore SIGPIPE: sigaction");
-        exit(-1);
+        return -1;
     }
 
-    signal(SIGHUP, sig_hup);
+    sa.sa_handler = sig_hup;
+    if (sigaction(SIGHUP, &sa, 0) == -1) {
+        perror("Could not set SIGHUP handler: sigaction");
+        return -1;
+    }
 
     fprintf(stdout, "Initializing Lua...\n");
 
