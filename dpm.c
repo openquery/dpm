@@ -259,13 +259,16 @@ static int handle_write(conn *c)
 
         if (wbytes == 0) {
             return -1;
-        } else if (wbytes == -1 ) {
+        } else if (wbytes == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 if (add_conn_event(c, EV_WRITE) == 0) {
-                    fprintf(stderr, "Couldn't add write watch to %d", c->fd);
+                    fprintf(stderr, "Couldn't add write watch to %d\n", c->fd);
                     return -1;
                 }
+                /* Transient error. Come back later. */
+                return 0;
             } else {
+                perror("Unhandled write error");
                 return -1;
             }
         }
