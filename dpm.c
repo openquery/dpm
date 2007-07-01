@@ -108,8 +108,8 @@ static void my_write_binary_field(unsigned char *buf, int *base, uint64_t length
 static uint8_t my_char_val(uint8_t X);
 static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len);
 static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2, uint len);
-static void my_scramble(unsigned char *dst, const unsigned char *random, const char *pass);
-static int my_check_scramble(const unsigned char *remote_scram, const unsigned char *random, const char *stored_hash);
+static void my_scramble(char *dst, const char *random, const char *pass);
+static int my_check_scramble(const char *remote_scram, const char *random, const char *stored_hash);
 
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
@@ -576,11 +576,13 @@ static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2
  * random is 20 byte random scramble from the server.
  * pass is plaintext password supplied from client
  * dst is a 20 byte buffer to receive the jumbled mess. */
-static void my_scramble(unsigned char *dst, const unsigned char *random, const char *pass)
+static void my_scramble(char *dst, const char *random, const char *pass)
 {
     struct sha1_ctx context;
     uint8_t hash1[SHA1_DIGEST_SIZE];
     uint8_t hash2[SHA1_DIGEST_SIZE];
+    /* Make sure the null terminator's in the right spot. */
+    dst[SHA1_DIGEST_SIZE + 1] = '\0';
 
     /* First hash the password. */
     sha1_init(&context);
@@ -609,7 +611,7 @@ static void my_scramble(unsigned char *dst, const unsigned char *random, const c
 }
 
 /* Server side check. */
-static int my_check_scramble(const unsigned char *remote_scram, const unsigned char *random, const char *stored_hash)
+static int my_check_scramble(const char *remote_scram, const char *random, const char *stored_hash)
 {
     uint8_t pass_hash[SHA1_DIGEST_SIZE];
     uint8_t rand_hash[SHA1_DIGEST_SIZE];
@@ -747,7 +749,7 @@ void *my_new_handshake_packet()
     my_handshake_packet *p;
  
     p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -782,7 +784,7 @@ static my_handshake_packet *my_consume_handshake_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -866,7 +868,7 @@ void *my_new_auth_packet()
 
     /* Clear out the struct. */
     p = (my_auth_packet *)malloc( sizeof(my_auth_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -880,9 +882,9 @@ void *my_new_auth_packet()
 
     p->max_packet_size = 16777216; /* FIXME: Double check this. */
     p->charset_number = 8;
-    strcpy(p->user, "whee"); /* FIXME: Needs to be editable. */
+    strcpy(p->user, "root"); /* FIXME: Needs to be editable. */
     p->databasename = NULL; /* Don't need a default DB. */
-    p->scramble_buff[21] = '\0';
+    p->scramble_buff[0] = '\0';
 
     return p;
 }
@@ -890,12 +892,16 @@ void *my_new_auth_packet()
 static int my_wire_auth_packet(conn *c, void *pkt)
 {
     my_auth_packet *p = (my_auth_packet *)pkt;
-    int psize = 53;
+    int psize = 32;
     size_t my_size = strlen(p->user) + 1;
+    size_t pass_size = strlen(p->scramble_buff);
     int base = c->towrite;
 
+    /* password, or no password. */
+    psize += pass_size == SHA1_DIGEST_SIZE ? 21 : 1;
+    /* Add in the username length + header. */
     psize += my_size + 4;
-    
+
     if (grow_write_buffer(c, c->towrite + psize) == -1) {
         return -1;
     }
@@ -913,7 +919,7 @@ static int my_wire_auth_packet(conn *c, void *pkt)
 
     int4store(&c->wbuf[base], p->max_packet_size);
     base += 4;
-    
+
     c->wbuf[base] = p->charset_number;
     base++;
 
@@ -923,11 +929,17 @@ static int my_wire_auth_packet(conn *c, void *pkt)
     memcpy(&c->wbuf[base], p->user, my_size);
     base += my_size;
 
-    c->wbuf[base] = 20; /* Length of scramble buff. */
-    base++;
-
-    memcpy(&c->wbuf[base], p->scramble_buff, 20);
-    base += 20;
+    if (pass_size == SHA1_DIGEST_SIZE) {
+        c->wbuf[base] = 20; /* Length of scramble buff. */
+        base++;
+        memcpy(&c->wbuf[base], p->scramble_buff, 20);
+        base += 20;
+    } else {
+        /* Note this could be an error condition... as far as the docs go
+         * the password size is _always_ either 0 or 20. */
+        c->wbuf[base] = 0;
+        base++;
+    }
 
     return 0;
 }
@@ -944,7 +956,7 @@ static my_auth_packet *my_consume_auth_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_auth_packet *)malloc( sizeof(my_auth_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1030,7 +1042,7 @@ void *my_new_ok_packet()
 
     /* Clear out the struct. */
     p = (my_ok_packet *)malloc( sizeof(my_ok_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1100,7 +1112,7 @@ static my_ok_packet *my_consume_ok_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_ok_packet *)malloc( sizeof(my_ok_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1148,7 +1160,7 @@ void *my_new_err_packet()
 
     /* Clear out the struct. */
     p = (my_err_packet *)malloc( sizeof(my_err_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1217,7 +1229,7 @@ static my_err_packet *my_consume_err_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_err_packet *)malloc( sizeof(my_err_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1267,7 +1279,7 @@ void *my_new_cmd_packet()
 
     /* Clear out the struct. */
     p = (my_cmd_packet *)malloc( sizeof(my_cmd_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1314,7 +1326,7 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_cmd_packet *)malloc( sizeof(my_cmd_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1351,7 +1363,7 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_rset_packet *)malloc( sizeof(my_rset_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1379,7 +1391,7 @@ static my_field_packet *my_consume_field_packet(conn *c)
 
     /* Clear out the struct. */
     p = (my_field_packet *)malloc( sizeof(my_field_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1393,10 +1405,10 @@ static my_field_packet *my_consume_field_packet(conn *c)
      * and a bunch of pointers into one fat malloc.
      */
 
-    my_size = c->packetsize - 4; /* Remove a few bytes for now. */
+    my_size = c->packetsize + 12; /* Extra room for null bytes */
 
     p->fields = (unsigned char *)malloc( my_size );
-    if (p->fields == 0) {
+    if (p->fields == NULL) {
         perror("Malloc()");
         return NULL;
     }
@@ -1504,7 +1516,7 @@ static my_eof_packet *my_consume_eof_packet(conn *c)
  
     /* Clear out the struct. */
     p = (my_eof_packet *)malloc( sizeof(my_eof_packet) );
-    if (p == 0) {
+    if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
@@ -1534,7 +1546,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     int ret = 0;
 
     #ifdef DBUG
-    fprintf(stdout, "START State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "TX START State: %s\n", my_state_name[c->mypstate]);
     #endif
     switch (c->my_type) {
     case my_client:
@@ -1587,7 +1599,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     }
 
     #ifdef DBUG
-    fprintf(stdout, "END State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "TX END State: %s\n", my_state_name[c->mypstate]);
     #endif
     run_lua_callback(c, 0);
     return ret;
@@ -1602,7 +1614,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     int ret = 0;
     int nargs = 0;
     #ifdef DBUG
-    fprintf(stdout, "START State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "RX START State: %s\n", my_state_name[c->mypstate]);
     #endif
     switch (c->my_type) {
     case my_client:
@@ -1647,6 +1659,12 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             break;
         case mys_sending_rset:
             switch (field_count) {
+            case 0:
+                *p = my_consume_ok_packet(c);
+                *ptype = myp_ok;
+                c->mypstate = mys_wait_cmd;
+                nargs++;
+                break;
             case 255:
                 *ptype = myp_err;
                 break;
@@ -1722,7 +1740,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     }
 
     #ifdef DBUG
-    fprintf(stdout, "END State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "RX END State: %s\n", my_state_name[c->mypstate]);
     #endif
     //run_lua_callback(c, nargs);
     return nargs;

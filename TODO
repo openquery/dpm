@@ -3,7 +3,8 @@ Blockers for release-1:
 BUGS TO KILL:
  - (first?) time buffers are sized, large queries tend to fail (MALFORMED
    PACKET)
- - Client->proxy handshake fails randomly.
+ - Client->proxy handshake fails randomly. When reading random data into
+   scramble-buf, ensure no \0
  - Really need a callback on handle_close, feels like a bug without it.
 
 - Reorganize files
