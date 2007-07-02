@@ -71,7 +71,7 @@ static int update_conn_event(conn *c, const int new_flags);
 static int run_protocol(conn *c, int read, int written);
 
 static int my_next_packet_start(conn *c);
-static void my_consume_header(conn *c);
+static int my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
 static int sent_packet(conn *c, void **p, int ptype, int field_count);
 static int received_packet(conn *c, void **p, int *ptype, int field_count);
@@ -247,7 +247,7 @@ static int handle_write(conn *c)
     }
 
     for(;;) {
-        if (c->written >= c->towrite) {
+        if (c->written == c->towrite) {
             c->mystate = my_waiting;
             c->written = 0;
             c->towrite = 0;
@@ -319,7 +319,7 @@ static int handle_read(conn *c)
             return -1;
         } else if (rbytes == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;
+                return 0;
             } else {
                 return -1;
             }
@@ -654,15 +654,11 @@ static int my_next_packet_start(conn *c)
      * readable to try consuming a header. */
     if (c->readto + 4 > c->read)
         return -1;
-    my_consume_header(c);
-
-    if (c->read >= c->packetsize)
-        return c->readto;
-    return -1;
+    return my_consume_header(c);
 }
 
 /* Consume the next mysql protocol length + seq header out of the buffer. */
-static void my_consume_header(conn *c)
+static int my_consume_header(conn *c)
 {
     int seq = 0;
     int base = c->readto;
@@ -670,15 +666,23 @@ static void my_consume_header(conn *c)
     seq           = uint1korr(&c->rbuf[base + 3]);
     c->packetsize += 4; /* Add in the original header len */
 
-    if (c->packet_seq == seq) {
-        c->packet_seq++;
-    } else if (seq == 0) {
-        /* FIXME: There should be a more elegant way of resetting the sequence
-         * packet outside of the header consumer.
-         */
-        c->packet_seq = 1;
+    /* If we've read enough to have fully read a packet, advance the sequence
+     * counter and allow parsing of the packet.
+     */
+    if (c->read - c->readto >= c->packetsize) {
+        if (c->packet_seq == seq) {
+            c->packet_seq++;
+        } else if (seq == 0) {
+            /* FIXME: There should be a more elegant way of resetting the sequence
+             * packet outside of the header consumer.
+             */
+            c->packet_seq = 1;
+        } else {
+            fprintf(stderr, "***WARNING*** Packets appear to be out of order conn [%d], header [%d]\n", c->packet_seq, seq);
+        }
+        return c->readto;
     } else {
-        fprintf(stderr, "***WARNING*** Packets appear to be out of order conn [%d], header [%d]\n", c->packet_seq, seq);
+        return -1;
     }
 }
 
@@ -1830,7 +1834,7 @@ static int run_protocol(conn *c, int read, int written)
                 }
 
                 /* Flush (above) and disconnect the conns */
-                if (cbret == MYP_FLUSH_DISCONNECT) {
+                if (remote && cbret == MYP_FLUSH_DISCONNECT) {
                     remote->remote = NULL;
                     c->remote      = NULL;
                 }
