@@ -1,8 +1,6 @@
 Blockers for release-1:
 
 BUGS TO KILL:
- - (first?) time buffers are sized, large queries tend to fail (MALFORMED
-   PACKET)
  - Client->proxy handshake fails randomly. When reading random data into
    scramble-buf, ensure no \0
  - Really need a callback on handle_close, feels like a bug without it.
@@ -23,6 +21,8 @@ BUGS TO KILL:
 
 Nice, meaty TODO:
 
+can probably force "max buffer size" of MAX_PACKET_SIZE. write some logic for
+it.
 don't allow connecting a backend if the conn is invalid
 connection close callback
 better mechanism for detecting closed conn?
