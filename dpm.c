@@ -754,6 +754,7 @@ static int my_wire_handshake_packet(conn *c, void *pkt)
 void *my_new_handshake_packet()
 {
     my_handshake_packet *p;
+    int i;
  
     p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
     if (p == NULL) {
@@ -771,10 +772,13 @@ void *my_new_handshake_packet()
     p->server_capabilities = CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_TRANSACTIONS | CLIENT_SECURE_CONNECTION;
     p->server_language = 8;
     p->server_status = SERVER_STATUS_AUTOCOMMIT;
-   
-    if (read(urandom_sock, p->scramble_buff, 20) < 20) {
-        perror("Could not read 20 bytes from /dev/urandom for scramble");
-        return NULL;
+
+    for (i = 0; i != SHA1_DIGEST_SIZE;) {
+        p->scramble_buff[i] = read(urandom_sock, p->scramble_buff + i, 1);
+
+        /* No nulls should exist within the scramble. */
+        if (p->scramble_buff[i] != '\0')
+            i++;
     }
 
     return p;
