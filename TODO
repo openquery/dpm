@@ -1,9 +1,7 @@
 Blockers for release-1:
 
 BUGS TO KILL:
- - Client->proxy handshake fails randomly. When reading random data into
-   scramble-buf, ensure no \0
- - Really need a callback on handle_close, feels like a bug without it.
+- Really need a callback on handle_close, feels like a bug without it.
 
 - Reorganize files
 *(bugged)- Create command packet so lua may at least inspect in-flight SQL
@@ -19,33 +17,33 @@ BUGS TO KILL:
   - One for each that uses a message_len instead of strlen
   - One for each that uses a DEFINE for max length.
 
-Nice, meaty TODO:
-
-can probably force "max buffer size" of MAX_PACKET_SIZE. write some logic for
-it.
-don't allow connecting a backend if the conn is invalid
-connection close callback
-better mechanism for detecting closed conn?
-RUN_UNTIL - somehow set the next state before packet is fully parsed again
-start really garbage collecting all generated packets.
-_if parsed_ - make sure it goes up into lua. make sure __gc works as expected.
-handle case of client not supplying password, user not needing one
+write demos for pass through, 1:1, conn pooling.
+support the 'stats' packet, so \s works.
 
 BONUS: Filter flags out of client abilities that we can't handle.
 
-need a "verify" conn obj method that barfs if client conn was closed
+Blockers for release-2:
+
+- need a "verify" conn obj method that barfs if client conn was closed
+- don't allow connecting a backend if the conn is invalid
+- better mechanism for detecting closed conn?
+- write packet-free routines. Clean up the memory leak I created.
+- _if parsed_ - make sure it goes up into lua. make sure __gc works as expected.
+- learn to handle large mysql packets (at least identify them, and bomb saying
+  they're not supported)
+- Pass internal defines up into lua from within the C program, if possible.
+- standard lua modules: 1) backend connect 2) client accept 3) passthrough
+
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
-write packet-free routines. Clean up the memory leak I created.
-WORK ## implement mysql's password crypto handshake
-learn to handle large mysql packets (at least identify them, and bomb saying
-they're not supported)
+can probably force "max buffer size" of MAX_PACKET_SIZE. write some logic for
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
 more libevent infrastructure; timers
 memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
+DONE ### implement mysql's password crypto handshake
 DONE ### use struct buffer sizes from mysql_com.h
 DONE ### flesh out obj_index to handle read/write correctly.
 DONE ### add read/write defines
