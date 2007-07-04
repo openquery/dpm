@@ -1,7 +1,6 @@
 Blockers for release-1:
 
 BUGS TO KILL:
-- Really need a callback on handle_close, feels like a bug without it.
 
 - Reorganize files
 *(bugged)- Create command packet so lua may at least inspect in-flight SQL
@@ -43,6 +42,7 @@ memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
+DONE ### Really need a callback on handle_close, feels like a bug without it.
 DONE ### implement mysql's password crypto handshake
 DONE ### use struct buffer sizes from mysql_com.h
 DONE ### flesh out obj_index to handle read/write correctly.

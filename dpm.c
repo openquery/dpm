@@ -1625,7 +1625,6 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
  /* NOTE: This means the packet was received _ON_ the wire for this conn */
 static int received_packet(conn *c, void **p, int *ptype, int field_count)
 {
-    int ret = 0;
     int nargs = 0;
     #ifdef DBUG
     fprintf(stdout, "RX START State: %s\n", my_state_name[c->mypstate]);
@@ -1756,7 +1755,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     #ifdef DBUG
     fprintf(stdout, "RX END State: %s\n", my_state_name[c->mypstate]);
     #endif
-    //run_lua_callback(c, nargs);
     return nargs;
 }
 
