@@ -169,6 +169,7 @@ enum myproto_states {
     myc_wait_auth,
     mys_sending_handshake,
     mys_recv_err,
+    my_closing,
 };
 
 enum my_types {

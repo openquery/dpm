@@ -39,7 +39,7 @@ const char *my_state_name[]={
     "Server sent handshake", 
     "Client wait handshake", 
     "Client waiting", 
-    "Server Waiting", 
+    "Server waiting", 
     "Client sent command", 
     "Server sending fields", 
     "Server sending rows", 
@@ -50,6 +50,7 @@ const char *my_state_name[]={
     "Client waiting auth", 
     "Server sending handshake", 
     "Server got error",
+    "Closing",
 };
 
 struct lua_State *L;
@@ -192,6 +193,9 @@ static void handle_close(conn *c)
 {
     conn *remote;
     assert(c != 0);
+
+    c->mypstate = my_closing;
+    run_lua_callback(c, 0);
     event_del(&c->ev);
 
     /* Release a connected remote connection.
@@ -208,7 +212,6 @@ static void handle_close(conn *c)
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
-    c = 0;
 }
 
 /* Generic "Grow my write buffer" function. */

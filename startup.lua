@@ -31,7 +31,14 @@ function client_ok(cid)
     print("Client ready!", cid)
     -- Wipe any crazy callbacks. Act as a passthrough.
     callback[cid] = {["Client waiting"] = nil, 
-                     ["Client sent command"] = new_command}
+                     ["Client sent command"] = new_command,
+                     ["Closing"] = client_closing,}
+end
+
+-- Client just got lost. Wipe callbacks, client table.
+function client_closing(cid)
+    clients[cid] = nil
+    callback[cid] = nil
 end
 
 function client_got_auth(auth_pkt, cid)
@@ -90,7 +97,8 @@ end
 function server_ready(ok_pkt, cid)
     print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
     callback[cid] = {["Server waiting command"] = finished_command,
-                     ["Server got error"] = finished_command}
+                     ["Server got error"] = finished_command,
+                     ["Closing"] = new_backend}
 end
 
 function server_handshake(hs_pkt, cid)
@@ -102,7 +110,19 @@ function server_handshake(hs_pkt, cid)
     myp.wire_packet(backend, auth_pkt)
     -- Don't need to store anything, server will return 'ok' or 'err' packet.
     callback[backend:id()] = {["Server waiting command"] = server_ready,
-                              ["Server got error"] = server_err,}
+                              ["Server got error"] = server_err,
+                              ["Closing"] = new_backend}
+end
+
+function new_backend(cid)
+    print "Creating new backend..."
+    -- This function is overloaded slightly.
+    -- If we were passed a cid, remove it from callbacks table (dead conn)
+    callback[cid] = nil
+
+    -- Then create new connection.
+    backend = myp.connect("127.0.0.1", 3306)
+    callback[backend:id()] = {["Server waiting auth"] = server_handshake}
 end
 
 -- Set up the listener, register a callback for new clients.
@@ -111,6 +131,4 @@ callback[listen:id()] = {["Client connect"] = new_client}
 
 -- Fire off the backend. NOTE that this won't retry or event print decent
 -- errors if it fails :)
-backend = myp.connect("127.0.0.1", 3306)
-callback[backend:id()] = {["Server waiting auth"] = server_handshake}
-
+new_backend(0)
