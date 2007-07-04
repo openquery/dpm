@@ -33,6 +33,7 @@ static int obj_int(lua_State *L, void *var, void *var2);
 static int obj_enum(lua_State *L, void *var, void *var2);
 static int obj_flags(lua_State *L, void *var, void *var2);
 static int obj_string(lua_State *L, void *var, void *var2);
+static int obj_pstring(lua_State *L, void *var, void *var2);
 static int obj_lstring(lua_State *L, void *var, void *var2);
 static int obj_uint64_t(lua_State *L, void *var, void *var2);
 static int obj_uint32_t(lua_State *L, void *var, void *var2);
@@ -86,7 +87,7 @@ static const obj_reg err_regs [] = {
 
 static const obj_reg cmd_regs [] = {
     {"command", obj_uint8_t, LO_READWRITE, offsetof(my_cmd_packet, command), 0},
-    {"argument", obj_string, LO_READWRITE, offsetof(my_cmd_packet, argument), 0},
+    {"argument", obj_pstring, LO_READWRITE, offsetof(my_cmd_packet, argument), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -137,7 +138,23 @@ static int obj_lstring(lua_State *L, void *var, void *var2)
 static int obj_string(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
-        lua_pushstring(L, (char *)var);
+        lua_pushstring(L, var);
+    } else {
+        luaL_error(L, "String functions are presently read-only");
+    }
+
+    return 1;
+}
+
+/* Sends \0 terminated strings to to/from lua.
+ * There's an extra indirection if the string was a malloc case
+ */
+static int obj_pstring(lua_State *L, void *var, void *var2)
+{
+
+    void **pstring = var;
+    if (lua_gettop(L) < 2) {
+        lua_pushstring(L, (char *)*pstring);
     } else {
         luaL_error(L, "String functions are presently read-only");
     }

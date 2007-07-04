@@ -102,7 +102,7 @@ function server_ready(ok_pkt, cid)
 end
 
 function server_handshake(hs_pkt, cid)
-    print "Got callback for server handshake packet"
+    print("Got callback for server handshake packet", hs_pkt:server_version())
 
     local auth_pkt = myp.new_auth_pkt()
     -- myp.crypt_pass(auth_pkt, hs_pkt, "toast")

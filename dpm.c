@@ -1363,8 +1363,6 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
     memcpy(p->argument, &c->rbuf[base], my_size);
     p->argument[my_size] = '\0';
 
-    fprintf(stdout, "***PACKET*** Client Command Packet: %d\n%s\n", p->command, p->argument);
-
     new_obj(L, p, "myp.cmd");
 
     return p;

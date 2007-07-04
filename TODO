@@ -1,9 +1,6 @@
 Blockers for release-1:
 
-BUGS TO KILL:
-
 - Reorganize files
-*(bugged)- Create command packet so lua may at least inspect in-flight SQL
 - Garbage collect packets
 - Non-parsing "proxy" mode (optional)
 *(almost)- Shut up the verbosity. Add -v or -d flag to make some of it come back
@@ -11,13 +8,12 @@ BUGS TO KILL:
 (after release) gitweb.cgi setup
 
 - Need new luaobj string handlers:
-  - One for a non-pointer string (*whatever)
-  - One for a pointer string (**whatever?)
   - One for each that uses a message_len instead of strlen
   - One for each that uses a DEFINE for max length.
 
 write demos for pass through, 1:1, conn pooling.
 support the 'stats' packet, so \s works.
+(optional) make strings mutable
 
 BONUS: Filter flags out of client abilities that we can't handle.
 
@@ -42,6 +38,7 @@ memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
+DONE ### Create command packet so lua may at least inspect in-flight SQL
 DONE ### Really need a callback on handle_close, feels like a bug without it.
 DONE ### implement mysql's password crypto handshake
 DONE ### use struct buffer sizes from mysql_com.h
