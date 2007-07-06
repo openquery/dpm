@@ -313,6 +313,11 @@ typedef struct {
     uint16_t    status_flags;
 } my_eof_packet;
 
+typedef struct {
+    size_t  len;
+    char    data[1];
+} cbuffer_t;
+
 /* Icky ewwy global vars. */
 
 extern struct lua_State *L;
@@ -323,5 +328,12 @@ void *my_new_auth_packet();
 void *my_new_ok_packet();
 void *my_new_err_packet();
 void *my_new_cmd_packet();
+
+/* Basic string buffering functions, which I can expand on later.
+ */
+cbuffer_t *cbuffer_new(size_t len, const char *src);
+void cbuffer_free(cbuffer_t *buf);
+inline size_t cbuffer_size(cbuffer_t *buf);
+inline const char *cbuffer_data(cbuffer_t *data);
 
 #endif /* PROXY_H */

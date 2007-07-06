@@ -122,6 +122,40 @@ static int run_lua_callback(conn *c, int nargs);
 static int proxy_connect(lua_State *L);
 static int proxy_disconnect(lua_State *L);
 
+/* Wrappers for string handling. Replaceable with GString or more buffer
+ * functions later.
+ */
+
+cbuffer_t *cbuffer_new(size_t len, const char *src)
+{
+    cbuffer_t *buf = (cbuffer_t *)malloc(sizeof(cbuffer_t) + len);
+    if (buf == NULL) {
+        perror("malloc");
+        return NULL;
+    }
+
+    memcpy(buf->data, src, len);
+    buf->data[len] = '\0';
+    return buf;
+}
+
+void cbuffer_free(cbuffer_t *buf)
+{
+    free(buf);
+}
+
+/* Start of access functions. This thing should be more or less... write once.
+ * if we're to rewrite, free/create a new one.
+ */
+inline size_t cbuffer_size(cbuffer_t *buf)
+{
+    return buf->len;
+}
+
+inline const char *cbuffer_data(cbuffer_t *buf)
+{
+    return buf->data;
+}
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
 static void sig_hup(const int sig)
