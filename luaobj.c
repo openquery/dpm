@@ -135,12 +135,16 @@ static int obj_lstring(lua_State *L, void *var, void *var2)
 }
 
 /* Sends \0 terminated strings to to/from lua */
+/* FIXME: Needs to respect a max length :( */
 static int obj_string(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushstring(L, var);
     } else {
-        luaL_error(L, "String functions are presently read-only");
+        size_t len = 0;
+        const char *str = luaL_checklstring(L, 1, &len);
+        strncpy((char *)var, str, len);
+        return 0;
     }
 
     return 1;
@@ -156,7 +160,18 @@ static int obj_pstring(lua_State *L, void *var, void *var2)
     if (lua_gettop(L) < 2) {
         lua_pushstring(L, (char *)*pstring);
     } else {
-        luaL_error(L, "String functions are presently read-only");
+        size_t len = 0;
+        const char *str = luaL_checklstring(L, 2, &len);
+        free(*pstring);
+        *pstring = (char *)malloc(len);
+
+        if (*pstring == NULL) {
+            perror("malloc");
+            return 0;
+        }
+
+        memcpy(*pstring, str, len);
+        return 0;
     }
 
     return 1;

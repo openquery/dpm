@@ -81,6 +81,7 @@ function new_command(cmd_pkt, cid)
         -- allow the client to close, but don't close the server.
         return MYP_NOPROXY
     end
+    cmd_pkt:argument("SELECT 1 + 1");
     myp.proxy_connect(clients[cid], backend)
 end
 
