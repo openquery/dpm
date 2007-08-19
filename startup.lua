@@ -76,13 +76,19 @@ end
 
 function new_command(cmd_pkt, cid)
     -- FIXME: cmd_pkt's argument value isn't copied into lua correctly.
-    print("reconnecting client to a backend", cmd_pkt:argument(), cmd_pkt:command())
+    print("reconnecting client to a backend: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
     if (cmd_pkt:command() == 1) then
         -- allow the client to close, but don't close the server.
         return MYP_NOPROXY
     end
-    cmd_pkt:argument("SELECT 1 + 1");
     myp.proxy_connect(clients[cid], backend)
+    if (cmd_pkt:argument() == "HELLO") then
+        cmd_pkt:argument("SELECT 1 + 1")
+        -- Packet has been rewritten. Attach the backend and wire it.
+        myp.wire_packet(backend, cmd_pkt)
+        -- Finally, return requesting to not proxy original packet.
+        return MYP_NOPROXY
+   end
 end
 
 function finished_command(cid)

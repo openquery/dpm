@@ -1358,11 +1358,45 @@ static void my_free_cmd_packet(void *pkt)
     free(p);
 }
 
-/* Stubbed for now. No point in being able to wire it until we can manipulate
- * strings from within lua. FIXME FIXME FIXME
+/* NOTE: This "trims" the null byte off of our argument, since supposedly
+ * this is normal.
  */
 static int my_wire_cmd_packet(conn *c, void *pkt)
 {
+    my_cmd_packet *p = (my_cmd_packet *)pkt;
+    int base         = c->towrite;
+    size_t mysize    = 0;
+
+    int psize = 5; /* misc chunks + header */
+
+    if (p->argument) {
+        /* 'argument' is normally not null terminated, but we should process
+         * it as so from lua. Guess we should also cut it back off.
+         */
+        mysize = strlen(p->argument);
+    }
+
+    psize += mysize;
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], 0);
+    base++;
+    c->packet_seq++;
+
+    c->wbuf[base] = p->command;
+    base++;
+
+    if (p->argument) {
+        memcpy(&c->wbuf[base], p->argument, psize - 5);
+    }
+
     return 0;
 }
 
@@ -1868,6 +1902,12 @@ static int run_protocol(conn *c, int read, int written)
                      */
                     memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
                     remote->towrite += c->packetsize;
+                } else if ( c->remote && ( cbret == MYP_NOPROXY ) ) {
+                    /* Condition to flush what was written, but don't proxy
+                     * the last packet in the pipeline
+                     */
+                    
+                    remote = (conn *)c->remote;
                 }
 
                 /* Flush (above) and disconnect the conns */
@@ -2053,7 +2093,7 @@ static int wire_packet(lua_State *L)
     p = *tmp;
 
     p->h.to_buf(*c, *tmp);
-    fprintf(stdout, "Wrote packet of type [%d]\n", p->h.ptype);
+    fprintf(stdout, "Wrote packet of type [%d] to sock [%d] with server type [%d]\n", p->h.ptype, (*c)->id, (*c)->my_type);
 
     /* FIXME: sent_packet doesn't need the field count at all? */
     lua_settop(L, 0);
