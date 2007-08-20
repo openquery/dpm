@@ -19,6 +19,8 @@ BONUS: Filter flags out of client abilities that we can't handle.
 
 Blockers for release-2:
 
+- report "real" thread back to client during connect? Or rewrite when
+  necessary.
 - need a "verify" conn obj method that barfs if client conn was closed
 - don't allow connecting a backend if the conn is invalid
 - better mechanism for detecting closed conn?

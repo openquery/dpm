@@ -123,26 +123,50 @@ void dump_stack()
 }
 
 /* Accessor functions */
+
+/* Storage of MySQL "dynamic length" variables */
+/* FIXME: All of these malloc'ing string functions need to bubble errors
+ * up to lua.
+ */
 static int obj_lstring(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushlstring(L, (char *)var, *(uint64_t *)var2);
     } else {
-        luaL_error(L, "Dynamic length variables are presently read-only");
+        size_t len = 0;
+        void **lstring = var;
+
+        const char *str = luaL_checklstring(L, 2, &len);
+        free(*lstring);
+        *lstring = (char *)malloc(len);
+
+        if (*lstring == NULL) {
+            perror("malloc");
+            return 0;
+        }
+
+        memcpy(*lstring, str, len);
+        return 0;
     }
 
     return 1;
 }
 
-/* Sends \0 terminated strings to to/from lua */
-/* FIXME: Needs to respect a max length :( */
+/* Store fixed length \0 terminated strings to to/from lua */
 static int obj_string(lua_State *L, void *var, void *var2)
 {
     if (lua_gettop(L) < 2) {
         lua_pushstring(L, var);
     } else {
         size_t len = 0;
+        unsigned int *maxlen = var2;
         const char *str = luaL_checklstring(L, 1, &len);
+
+        /* FIXME: Everything should have a maximum. Remove this! */
+        if (*maxlen != 0 && len > *maxlen) {
+            return luaL_error(L, "Argument too long to store. Max [%d]", *maxlen);
+        }
+
         strncpy((char *)var, str, len);
         return 0;
     }
@@ -150,8 +174,9 @@ static int obj_string(lua_State *L, void *var, void *var2)
     return 1;
 }
 
-/* Sends \0 terminated strings to to/from lua.
+/* Store \0 terminated strings to to/from lua.
  * There's an extra indirection if the string was a malloc case
+ * FIXME: What would be a good upper bounds here?
  */
 static int obj_pstring(lua_State *L, void *var, void *var2)
 {
@@ -180,6 +205,7 @@ static int obj_pstring(lua_State *L, void *var, void *var2)
 /* Sets/returns bit flags within a value. 
  * If one arg, returns flag val. If two arg, sets flag to a boolean of second
  * arg.
+ * FIXME: Untested
  */
 static int obj_flags(lua_State *L, void *var, void *var2)
 {

@@ -2093,7 +2093,7 @@ static int wire_packet(lua_State *L)
     p = *tmp;
 
     p->h.to_buf(*c, *tmp);
-    fprintf(stdout, "Wrote packet of type [%d] to sock [%d] with server type [%d]\n", p->h.ptype, (*c)->id, (*c)->my_type);
+    fprintf(stdout, "Wrote packet of type [%d] to sock [%llu] with server type [%d]\n", p->h.ptype, (unsigned long long)(*c)->id, (*c)->my_type);
 
     /* FIXME: sent_packet doesn't need the field count at all? */
     lua_settop(L, 0);
