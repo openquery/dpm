@@ -22,7 +22,7 @@
 #include "luaobj.h"
 
 /* Forward declarations */
-static int tmp_gc(lua_State *L);
+static int packet_gc(lua_State *L);
 
 static int  obj_index(lua_State *L);
 static void obj_add(lua_State *L, obj_reg *r);
@@ -92,7 +92,7 @@ static const obj_reg cmd_regs [] = {
 };
 
 static const luaL_Reg generic_m [] = {
-    {"__gc", tmp_gc},
+    {"__gc", packet_gc},
     {NULL, NULL},
 };
 
@@ -106,9 +106,22 @@ static const obj_toreg regs [] = {
     {NULL, NULL, NULL, NULL, NULL},
 };
 
-static int tmp_gc(lua_State *L)
+static int packet_gc(lua_State *L)
 {
-    fprintf(stdout, "Tried to garbage collect something.\n");
+    my_packet_fuzz *p;
+    void **tmp;
+
+    /* FIXME: Have to stop writing code like this. What's the real way to do
+     * it?
+     */
+    tmp = (void **)lua_touserdata(L, 1);
+    p = *tmp;
+
+    /* This frees itself. Ensure there are no leaks with valgrind! */
+    if (p->h.free_me) {
+        p->h.free_me(p);
+    }
+
     return 0;
 }
 

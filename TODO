@@ -4,7 +4,6 @@ Blockers for release-1:
   - lua subdir
   - src subdir
   - t/ subdir (empty for now?) (or place a README file?)
-- Garbage collect packets
 - Non-parsing "proxy" mode (optional)
 *(almost)- Shut up the verbosity. Add -v or -d flag to make some of it come back
   (optional)
@@ -39,6 +38,7 @@ memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
+DONE ### Garbage collect packets
 DONE ### Strings are mutable
 DONE ### Create command packet so lua may at least inspect in-flight SQL
 DONE ### Really need a callback on handle_close, feels like a bug without it.
