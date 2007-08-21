@@ -54,6 +54,7 @@ const char *my_state_name[]={
 struct lua_State *L;
 
 int urandom_sock = 0;
+int verbose      = 0;
 
 /* Declarations */
 static void sig_hup(const int sig);
@@ -210,7 +211,8 @@ static int handle_accept(int fd)
 
     if ( (newfd = accept(fd, (struct sockaddr *)&addr, &addrlen)) == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            fprintf(stderr, "interesting error blocking on accept. ignore?\n");
+            if (verbose)
+                fprintf(stderr, "Blocking error on accept. ignore?\n");
         } else if (errno == EMFILE) {
             fprintf(stderr, "Holy crap out of FDs!\n");
         } else {
@@ -240,7 +242,8 @@ static void handle_close(conn *c)
     }
 
     close(c->fd);
-    fprintf(stdout, "Closed connection for %llu\n", (unsigned long long) c->id);
+    if (verbose)
+        fprintf(stdout, "Closed connection for %llu\n", (unsigned long long) c->id);
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     free(c);
@@ -251,7 +254,8 @@ static int grow_write_buffer(conn *c, int newsize)
 {
     unsigned char *new_wbuf;
     if (c->wbufsize < newsize) {
-        fprintf(stdout, "Reallocating write buffer from %d to %d\n", c->wbufsize, c->wbufsize * 2);
+        if (verbose)
+            fprintf(stdout, "Reallocating write buffer from %d to %d\n", c->wbufsize, c->wbufsize * 2);
         new_wbuf = realloc(c->wbuf, c->wbufsize * 2);
 
         if (new_wbuf == NULL) {
@@ -329,7 +333,8 @@ static int handle_read(conn *c)
          * TODO: Share buffers so we don't realloc so often... */
         if (c->read >= c->rbufsize) {
             /* I'd prefer 1.5... */
-            fprintf(stdout, "Reallocing input buffer from %d to %d\n",
+            if (verbose)
+                fprintf(stdout, "Reallocing input buffer from %d to %d\n",
                     c->rbufsize, c->rbufsize * 2);
             new_rbuf = realloc(c->rbuf, c->rbufsize * 2);
 
@@ -418,7 +423,8 @@ static conn *init_conn(int newfd)
     event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
     event_add(&newc->ev, NULL); /* error handling */
 
-    fprintf(stdout, "Made new conn structure for %d\n", newfd);
+    if (verbose)
+        fprintf(stdout, "Made new conn structure for %d\n", newfd);
 
     return newc;
 }
@@ -434,7 +440,8 @@ static void handle_event(int fd, short event, void *arg)
     /* if we're the server socket, it's a new conn */
     if (c->listener) {
         newfd = handle_accept(fd); /* error handling */
-        fprintf(stdout, "Got new client sock %d\n", newfd);
+        if (verbose)
+            fprintf(stdout, "Got new client sock %d\n", newfd);
 
         set_sock_nonblock(newfd); /* error handling on this and below */
         setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
@@ -1842,12 +1849,14 @@ static int run_protocol(conn *c, int read, int written)
                 return -1;
             }
             if (err != 0) {
-                fprintf(stderr, "Error in connecting outbound socket\n");
+                if (verbose)
+                    fprintf(stderr, "Error in connecting outbound socket\n");
                 return -1;
             }
 
             /* Neat. we're all good. */
-            fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
+            if (verbose)
+                fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
             update_conn_event(c, EV_READ | EV_PERSIST);
             c->mystate  = my_waiting;
             c->mypstate = mys_connect;
@@ -1988,7 +1997,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     /* FIXME: Debug crap. */
     if (!lua_isfunction(L, 1) || lua_gettop(L) < nargs + 1) {
-        fprintf(stderr, "ERRRRRRRRRROR running callback, dumping stack\n");
+        fprintf(stderr, "ERROR running callback, dumping stack\n");
         dump_stack();
         return 0;
     }
@@ -2091,7 +2100,8 @@ static int wire_packet(lua_State *L)
     p = *tmp;
 
     p->h.to_buf(*c, *tmp);
-    fprintf(stdout, "Wrote packet of type [%d] to sock [%llu] with server type [%d]\n", p->h.ptype, (unsigned long long)(*c)->id, (*c)->my_type);
+    if (verbose)
+        fprintf(stdout, "Wrote packet of type [%d] to sock [%llu] with server type [%d]\n", p->h.ptype, (unsigned long long)(*c)->id, (*c)->my_type);
 
     /* FIXME: sent_packet doesn't need the field count at all? */
     lua_settop(L, 0);
@@ -2209,6 +2219,7 @@ int main (int argc, char **argv)
     char *startfile = "startup.lua";
     static struct option l_options[] = {
         {"startfile", 1, 0, 's'},
+        {"verbose", 2, 0, 'v'},
     };
 
     /* Init /dev/urandom socket... */
@@ -2249,14 +2260,22 @@ int main (int argc, char **argv)
     register_obj_types(L); /* Internal call to fill all custom metatables */
 
     /* Time to do argument parsing! */
-    while ( (c = getopt_long(argc, argv, "s:", l_options, NULL) ) != -1) {
+    while ( (c = getopt_long(argc, argv, "s:v", l_options, NULL) ) != -1) {
         switch (c) {
         case 's':
             startfile = optarg;
             break;
+        case 'v':
+            if (optarg) {
+                verbose = atoi(optarg);
+            } else {
+                verbose++;
+            }
+            break;
         default:
             printf("Dormando's Proxy for MySQL release " VERSION "\n");
-            printf("Usage: --startfile startupfile.lua (default 'startup.lua')\n");
+            printf("Usage: --startfile startupfile.lua (default 'startup.lua')\n"
+                   "  --verbose [num] (increase verbosity)\n");
             return -1;
         }
     }
@@ -2267,7 +2286,8 @@ int main (int argc, char **argv)
         return -1;
     }
 
-    fprintf(stdout, "Starting event dispatcher...\n");
+    if (verbose)
+        fprintf(stdout, "Starting event dispatcher...\n");
 
     event_dispatch();
 
