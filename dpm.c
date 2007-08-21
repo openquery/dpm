@@ -29,9 +29,7 @@
 
 #define BUF_SIZE 2048
 
-/* Test pass-through variables. */
-#define MY_SERVER "127.0.0.1"
-#define MY_PORT 3306
+#define VERSION "0"
 
 const char *my_state_name[]={
     "Server connect", 
@@ -2206,8 +2204,12 @@ int main (int argc, char **argv)
         {"proxy_disconnect", proxy_disconnect},
         {NULL, NULL},
     };
-
-    fprintf(stdout, "Starting up...\n");
+    /* Argument parsing helper. */
+    int c;
+    char *startfile = "startup.lua";
+    static struct option l_options[] = {
+        {"startfile", 1, 0, 's'},
+    };
 
     /* Init /dev/urandom socket... */
     if( (urandom_sock = open("/dev/urandom", O_RDONLY)) == -1) {
@@ -2235,8 +2237,6 @@ int main (int argc, char **argv)
         return -1;
     }
 
-    fprintf(stdout, "Initializing Lua...\n");
-
     L = lua_open();
 
     if (L == NULL) {
@@ -2248,7 +2248,20 @@ int main (int argc, char **argv)
     luaL_register(L, "myp", myp);
     register_obj_types(L); /* Internal call to fill all custom metatables */
 
-    if (luaL_dofile(L, "startup.lua")) {
+    /* Time to do argument parsing! */
+    while ( (c = getopt_long(argc, argv, "s:", l_options, NULL) ) != -1) {
+        switch (c) {
+        case 's':
+            startfile = optarg;
+            break;
+        default:
+            printf("Dormando's Proxy for MySQL release " VERSION "\n");
+            printf("Usage: --startfile startupfile.lua (default 'startup.lua')\n");
+            return -1;
+        }
+    }
+
+    if (luaL_dofile(L, startfile)) {
         fprintf(stdout, "Could not run lua initializer: %s\n", lua_tostring(L, -1));
         lua_pop(L, 1);
         return -1;

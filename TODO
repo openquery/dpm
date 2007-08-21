@@ -10,7 +10,6 @@ Blockers for release-1:
 (after release) gitweb.cgi setup
 
 write demos for pass through, 1:1, conn pooling.
-(optional) getopt support for specifying lua startup file
 support the 'stats' packet, so \s works.
 
 BONUS: Filter flags out of client abilities that we can't handle.
@@ -38,6 +37,7 @@ memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
+DONE ### getopt support for specifying lua startup file
 DONE ### Garbage collect packets
 DONE ### Strings are mutable
 DONE ### Create command packet so lua may at least inspect in-flight SQL

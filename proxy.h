@@ -38,7 +38,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdint.h>
-/* Help find stupid bugs */
+#include <getopt.h>
 #include <assert.h>
 
 /* libevent specifics */
