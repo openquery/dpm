@@ -1,4 +1,4 @@
-Blockers for release-1:
+Blockers for release-2:
 
 - Reorganize files
   - lua subdir
@@ -8,23 +8,33 @@ Blockers for release-1:
 (after release) gitweb.cgi setup
 
 write demos for pass through, 1:1, conn pooling.
-support the 'stats' packet, so \s works.
+support the COM_STATISTICS result packet, so \s works.
 
-BONUS: Filter flags out of client abilities that we can't handle.
-
-Blockers for release-2:
+Blockers for release-3:
 
 - report "real" thread back to client during connect? Or rewrite when
   necessary.
 - need a "verify" conn obj method that barfs if client conn was closed
 - don't allow connecting a backend if the conn is invalid
 - better mechanism for detecting closed conn?
-- write packet-free routines. Clean up the memory leak I created.
-- _if parsed_ - make sure it goes up into lua. make sure __gc works as expected.
+- _if parsed_ - make sure it goes up into lua.
 - learn to handle large mysql packets (at least identify them, and bomb saying
   they're not supported)
 - Pass internal defines up into lua from within the C program, if possible.
 - standard lua modules: 1) backend connect 2) client accept 3) passthrough
+
+Blockers for release-4:
+
+- pick one code style to clean up, and clean it.
+- support at least COM_CHANGE_USER, COM_PING
+- cleaner lua, more demos or libraries.
+- start test package (perl TAP? Probably).
+
+Blockers for release-5:
+
+- port to at least one other OS (OpenBSD?)
+- at least two more packet types
+- TBD
 
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
@@ -35,6 +45,8 @@ memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
 
+DONE ### (start to) write packet-free routines. Clean up the memory leak I
+         created. '__gc' verified as working.
 DONE ### Shut up the verbosity. Add -v or -d flag to make some of it come back
 DONE ### getopt support for specifying lua startup file
 DONE ### Garbage collect packets
