@@ -2216,7 +2216,7 @@ int main (int argc, char **argv)
     };
     /* Argument parsing helper. */
     int c;
-    char *startfile = "startup.lua";
+    char *startfile = "lua/startup.lua";
     static struct option l_options[] = {
         {"startfile", 1, 0, 's'},
         {"verbose", 2, 0, 'v'},
