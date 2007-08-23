@@ -211,6 +211,7 @@ typedef struct {
     int listener;
 
     /* Proxy references. */
+    int next_call; /* next valid packet which will cause a callback. */
     struct conn *remote;
 } conn;
 
@@ -335,5 +336,7 @@ cbuffer_t *cbuffer_new(size_t len, const char *src);
 void cbuffer_free(cbuffer_t *buf);
 inline size_t cbuffer_size(cbuffer_t *buf);
 inline const char *cbuffer_data(cbuffer_t *data);
+
+typedef void *(*pkt_func) (conn *c);
 
 #endif /* PROXY_H */

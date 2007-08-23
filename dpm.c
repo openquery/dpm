@@ -401,6 +401,7 @@ static conn *init_conn(int newfd)
     newc->last_cmd    = 0;
     newc->packet_seq  = 0;
     newc->listener    = 0;
+    newc->next_call   = -1;
 
     /* Set up the buffers. */
     newc->rbufsize = BUF_SIZE;
@@ -1686,7 +1687,9 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     #ifdef DBUG
     fprintf(stdout, "TX END State: %s\n", my_state_name[c->mypstate]);
     #endif
-    run_lua_callback(c, 0);
+    if (c->next_call == -1 || c->next_call == c->mypstate) {
+        run_lua_callback(c, 0);
+    }
     return ret;
 }
 
@@ -1697,19 +1700,25 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 static int received_packet(conn *c, void **p, int *ptype, int field_count)
 {
     int nargs = 0;
+    pkt_func consumer = NULL;
     #ifdef DBUG
     fprintf(stdout, "RX START State: %s\n", my_state_name[c->mypstate]);
     #endif
+
+    /* Default *p to NULL */
+    *p = NULL;
+
     switch (c->my_type) {
     case my_client:
         switch (c->mypstate) {
         case myc_wait_auth:
-            *p = my_consume_auth_packet(c);
+            consumer = my_consume_auth_packet;
             *ptype = myp_auth;
             c->mypstate = myc_waiting;
             nargs++;
             break;
         case myc_waiting:
+            /* command packets must always be consumed. */
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
             c->mypstate = myc_sent_cmd;
@@ -1720,7 +1729,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     case my_server:
         switch (c->mypstate) {
         case mys_connect:
-            *p = my_consume_handshake_packet(c);
+            consumer = my_consume_handshake_packet;
             *ptype = myp_handshake;
             c->mypstate = mys_wait_auth;
             nargs++; /* The nargs++ is for the callback function */
@@ -1728,7 +1737,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         case mys_sending_ok:
             switch (field_count) {
             case 0:
-                *p = my_consume_ok_packet(c);
+                consumer = my_consume_ok_packet;
                 *ptype = myp_ok;
                 c->mypstate = mys_wait_cmd;
                 nargs++;
@@ -1744,7 +1753,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         case mys_sending_rset:
             switch (field_count) {
             case 0:
-                *p = my_consume_ok_packet(c);
+                consumer = my_consume_ok_packet;
                 *ptype = myp_ok;
                 c->mypstate = mys_wait_cmd;
                 nargs++;
@@ -1753,7 +1762,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 *ptype = myp_err;
                 break;
             default:
-                *p = my_consume_rset_packet(c);
+                consumer = my_consume_rset_packet;
                 *ptype = myp_rset;
                 c->mypstate = mys_sending_fields;
             }
@@ -1812,7 +1821,8 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
 
         /* Read errors if we detected an error packet. */
         if (*ptype == myp_err) {
-            *p = my_consume_err_packet(c);
+            //*p = my_consume_err_packet(c);
+            consumer = my_consume_err_packet;
             c->packet_seq = 0;
             c->mypstate = mys_recv_err;
             nargs++;
@@ -1821,6 +1831,10 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         if (c->mypstate == mys_wait_cmd) {
             c->packet_seq = 0;
         }
+    }
+
+    if (consumer && ( c->next_call == -1 || c->next_call == c->mypstate )) {
+        *p = consumer(c);
     }
 
     #ifdef DBUG
@@ -1880,7 +1894,7 @@ static int run_protocol(conn *c, int read, int written)
                 int ptype = myp_none;
                 void *p = NULL;
                 int ret = 0;
-                int cbret;
+                int cbret = 0;
 
                 #ifdef DBUG
                 fprintf(stdout, "Read from %llu packet size %u.\n", (unsigned long long) c->id, c->packetsize);
@@ -1893,7 +1907,9 @@ static int run_protocol(conn *c, int read, int written)
                  * check that a pointer was returned. */
                 /* if (p == NULL) return -1; */
 
-                cbret = run_lua_callback(c, ret);
+                if (c->next_call == -1 || c->next_call == c->mypstate) {
+                    cbret = run_lua_callback(c, ret);
+                }
 
                 /* Handle writing to a remote if one exists */
                 if ( c->remote && ( cbret == MYP_OK || cbret == MYP_FLUSH_DISCONNECT ) ) {
@@ -2019,6 +2035,20 @@ static int run_lua_callback(conn *c, int nargs)
     }
 
     return ret;
+}
+
+/* LUA command for specifying the next time a packet parser/callback should
+ * fire.
+ * Can be any protocol event status. Useful for only intercepting a CMD packet
+ * and fast-proxying the resultset.
+ * FIXME: In order for this to be _actually_ useful, the verbose defines of
+ * protocol states need to be injected into a lua global somewhere.
+ */
+static int proxy_until(lua_State *L)
+{
+    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
+    (*c)->next_call = (int)luaL_checkinteger(L, 2);
+    return 0;
 }
 
 /* LUA command for verifying a password hash.
@@ -2212,6 +2242,7 @@ int main (int argc, char **argv)
         {"crypt_pass", crypt_pass},
         {"proxy_connect", proxy_connect},
         {"proxy_disconnect", proxy_disconnect},
+        {"proxy_until", proxy_until},
         {NULL, NULL},
     };
     /* Argument parsing helper. */
