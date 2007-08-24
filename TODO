@@ -2,6 +2,7 @@ Blockers for release-2:
 
 - (after release) gitweb.cgi setup
 - write demos for pass through, 1:1, conn pooling.
+- kill assignment warnings in dpm.c.
 
 Blockers for release-3:
 

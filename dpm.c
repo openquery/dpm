@@ -49,6 +49,7 @@ const char *my_state_name[]={
     "Server sending handshake", 
     "Server got error",
     "Closing",
+    "Server sending stats",
 };
 
 struct lua_State *L;
