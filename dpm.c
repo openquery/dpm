@@ -78,30 +78,30 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count);
 static int received_packet(conn *c, void **p, int *ptype, int field_count);
 
 /* Packet managers */
-static my_handshake_packet *my_consume_handshake_packet(conn *c);
+static void *my_consume_handshake_packet(conn *c);
 static void my_free_handshake_packet(void *p);
 static int my_wire_handshake_packet(conn *c, void *pkt);
 
-static my_auth_packet *my_consume_auth_packet(conn *c);
+static void *my_consume_auth_packet(conn *c);
 static void my_free_auth_packet(void *p);
 static int my_wire_auth_packet(conn *c, void *pkt);
 
-static my_ok_packet *my_consume_ok_packet(conn *c);
+static void *my_consume_ok_packet(conn *c);
 static void my_free_ok_packet(void *p);
 static int my_wire_ok_packet(conn *c, void *pkt);
 
-static my_err_packet *my_consume_err_packet(conn *c);
+static void *my_consume_err_packet(conn *c);
 static void my_free_err_packet(void *pkt);
 static int my_wire_err_packet(conn *c, void *pkt);
 
-static my_cmd_packet *my_consume_cmd_packet(conn *c);
+static void *my_consume_cmd_packet(conn *c);
 static void my_free_cmd_packet(void *pkt);
 static int my_wire_cmd_packet(conn *c, void *pkt);
 
-static my_rset_packet *my_consume_rset_packet(conn *c);
-static my_field_packet *my_consume_field_packet(conn *c);
+static void *my_consume_rset_packet(conn *c);
+static void *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
-static my_eof_packet *my_consume_eof_packet(conn *c);
+static void *my_consume_eof_packet(conn *c);
 
 static uint64_t my_read_binary_field(unsigned char *buf, int *base);
 static int my_size_binary_field(uint64_t length);
@@ -831,7 +831,7 @@ void *my_new_handshake_packet()
 /* FIXME: If we have the second scramblebuff, it needs to be assembled
  * into a single line for processing.
  */
-static my_handshake_packet *my_consume_handshake_packet(conn *c)
+static void *my_consume_handshake_packet(conn *c)
 {
     my_handshake_packet *p;
     int base = c->readto + 4;
@@ -1003,7 +1003,7 @@ static int my_wire_auth_packet(conn *c, void *pkt)
  * name, is that the end of the packet? Should test, instead of strlen'ing
  * random memory.
  */
-static my_auth_packet *my_consume_auth_packet(conn *c)
+static void *my_consume_auth_packet(conn *c)
 {
     my_auth_packet *p;
     int base = c->readto + 4;
@@ -1159,7 +1159,7 @@ static int my_wire_ok_packet(conn *c, void *pkt)
     return 0;
 }
 
-static my_ok_packet *my_consume_ok_packet(conn *c)
+static void *my_consume_ok_packet(conn *c)
 {
     my_ok_packet *p;
     int base = c->readto + 4;
@@ -1276,7 +1276,7 @@ static int my_wire_err_packet(conn *c, void *pkt)
 /* FIXME: There might be an "unknown error" state which changes the packet
  * payload.
  */
-static my_err_packet *my_consume_err_packet(conn *c)
+static void *my_consume_err_packet(conn *c)
 {
     my_err_packet *p;
     int base = c->readto + 4;
@@ -1407,7 +1407,7 @@ static int my_wire_cmd_packet(conn *c, void *pkt)
     return 0;
 }
 
-static my_cmd_packet *my_consume_cmd_packet(conn *c)
+static void *my_consume_cmd_packet(conn *c)
 {
     my_cmd_packet *p;
     int base = c->readto + 4;
@@ -1443,7 +1443,7 @@ static my_cmd_packet *my_consume_cmd_packet(conn *c)
     return p;
 }
 
-static my_rset_packet *my_consume_rset_packet(conn *c)
+static void *my_consume_rset_packet(conn *c)
 {
     my_rset_packet *p;
     int base = c->readto + 4;
@@ -1469,7 +1469,7 @@ static my_rset_packet *my_consume_rset_packet(conn *c)
     return p;
 }
 
-static my_field_packet *my_consume_field_packet(conn *c)
+static void *my_consume_field_packet(conn *c)
 {
     my_field_packet *p;
     int base = c->readto + 4;
@@ -1596,7 +1596,7 @@ static int my_consume_row_packet(conn *c)
 }
 
 /* Placeholder */
-static my_eof_packet *my_consume_eof_packet(conn *c)
+static void *my_consume_eof_packet(conn *c)
 {
     my_eof_packet *p;
     int base = c->readto + 4;
