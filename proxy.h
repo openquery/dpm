@@ -150,6 +150,7 @@ enum mypacket_types {
     myp_field,
     myp_row,
     myp_eof,
+    myp_stats,
 };
 
 enum myproto_states {
@@ -170,6 +171,7 @@ enum myproto_states {
     mys_sending_handshake,
     mys_recv_err,
     my_closing,
+    mys_sending_stats,
 };
 
 enum my_types {

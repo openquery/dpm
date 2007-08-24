@@ -1675,6 +1675,9 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             case COM_QUIT:
                 c->mypstate = mys_sending_ok;
                 break;
+            case COM_STATISTICS:
+                c->mypstate = mys_sending_stats;
+                break;
             default:
                 fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
                 assert(1 == 0);
@@ -1792,6 +1795,14 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 my_consume_field_packet(c);
                 *ptype = myp_field;
             }
+            break;
+        case mys_sending_stats:
+            /* Stats packet is obscure. There's no way to get an error from it
+             * so you might as well just parse the stupid thing.
+             */
+            /* FIXME: consumer = my_consume_stats_packet; */
+            *ptype = myp_stats;
+            c->mypstate = mys_wait_cmd;
             break;
         case mys_sending_rows:
             switch (field_count) {
