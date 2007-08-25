@@ -33,7 +33,7 @@ storage  = {}
 passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
 
 function client_ok(cid)
-    print("Client ready!", cid)
+    print("Client ready! id: " .. cid)
     -- Wipe any crazy callbacks. Act as a passthrough.
     callback[cid] = {["Client waiting"] = nil, 
                      ["Client sent command"] = new_command,
@@ -47,10 +47,9 @@ function client_closing(cid)
 end
 
 function client_got_auth(auth_pkt, cid)
-    print("Got auth callback", type(auth_pkt), type(cid))
     local hs_pkt = storage[cid]
     if (passdb[auth_pkt:user()] and myp.check_pass(auth_pkt, hs_pkt, passdb[auth_pkt:user()]) == 0) then
-        print "OMFG passwords matched!"
+        print "Passwords matched!"
         local ok_pkt = myp.new_ok_pkt()
         -- FIXME: Prior to this stage "Client waiting" should mean "Client got
         -- auth"
@@ -58,7 +57,7 @@ function client_got_auth(auth_pkt, cid)
         myp.wire_packet(clients[cid], ok_pkt)
         -- myp.proxy_connect(clients[cid], backend)
     else
-        print "OMFG passwords did NOT match!!!"
+        print "Passwords did NOT match!"
         local err_pkt = myp.new_err_pkt()
         callback[cid] = nil
         myp.wire_packet(clients[cid], err_pkt)
@@ -70,7 +69,7 @@ end
 
 function new_client(c)
     -- "c" is a new listening connection object.
-    print("Holy crap it's a new client!", type(c), c:id(), c:listener(), c:my_type())
+    print("It's a new client! id: " .. c:id())
     clients[c:id()] = c -- Prevent client from being garbage collected
     callback[c:id()] = {["Client waiting"] = client_got_auth}
 
@@ -80,8 +79,7 @@ function new_client(c)
 end
 
 function new_command(cmd_pkt, cid)
-    -- FIXME: cmd_pkt's argument value isn't copied into lua correctly.
-    print("reconnecting client to a backend: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
+    print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
     -- Lets set this value on every command, even though it's persistent! :)
     myp.proxy_until(clients[cid], 6) -- myc_sent_cmd
     if (cmd_pkt:command() == 1) then
@@ -101,15 +99,14 @@ end
 function finished_command(cid)
     print "Backend completed handling command."
     return MYP_FLUSH_DISCONNECT
-    -- myp.proxy_disconnect(backend)
 end
 
 function server_err(err_pkt, cid)
-    print("Backend error!", type(err_pkt), err_pkt:message(), cid)
+    print("Backend error: " .. err_pkt:message() .. " id: " .. cid)
 end
 
 function server_ready(ok_pkt, cid)
-    print("Backend ready!", type(ok_pkt), ok_pkt:warning_count(), cid)
+    print("Backend ready!")
     myp.proxy_until(backend, 11);
     callback[cid] = {["Server waiting command"] = finished_command,
                      ["Server got error"] = finished_command,
@@ -117,10 +114,9 @@ function server_ready(ok_pkt, cid)
 end
 
 function server_handshake(hs_pkt, cid)
-    print("Got callback for server handshake packet", hs_pkt:server_version())
+    print("Got handshake from server, sending auth")
 
     local auth_pkt = myp.new_auth_pkt()
-    -- myp.crypt_pass(auth_pkt, hs_pkt, "toast")
 
     myp.wire_packet(backend, auth_pkt)
     -- Don't need to store anything, server will return 'ok' or 'err' packet.
