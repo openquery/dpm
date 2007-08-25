@@ -72,7 +72,6 @@ static int update_conn_event(conn *c, const int new_flags);
 static int run_protocol(conn *c, int read, int written);
 
 static int my_next_packet_start(conn *c);
-static int my_consume_header(conn *c);
 static int grow_write_buffer(conn *c, int newsize);
 static int sent_packet(conn *c, void **p, int ptype, int field_count);
 static int received_packet(conn *c, void **p, int *ptype, int field_count);
@@ -694,40 +693,31 @@ static int my_check_scramble(const char *remote_scram, const char *random, const
  * return the starting position. */
 static int my_next_packet_start(conn *c)
 {
+    int seq = 0;
     /* A couple sanity checks... First is that we must have enough bytes
      * readable to try consuming a header. */
     if (c->readto + 4 > c->read)
         return -1;
-    return my_consume_header(c);
-}
 
-/* Consume the next mysql protocol length + seq header out of the buffer. */
-static int my_consume_header(conn *c)
-{
-    int seq = 0;
-    int base = c->readto;
-    c->packetsize = uint3korr(&c->rbuf[base]);
-    seq           = uint1korr(&c->rbuf[base + 3]);
-    c->packetsize += 4; /* Add in the original header len */
+    c->packetsize = uint3korr(&c->rbuf[c->readto]);
+    seq           = uint1korr(&c->rbuf[c->readto + 3]);
+    c->packetsize += 4;
 
-    /* If we've read enough to have fully read a packet, advance the sequence
-     * counter and allow parsing of the packet.
-     */
+    /* If we've read a packet header, see if we have the whole packet. */
     if (c->read - c->readto >= c->packetsize) {
-        if (c->packet_seq == seq) {
-            c->packet_seq++;
-        } else if (seq == 0) {
-            /* FIXME: There should be a more elegant way of resetting the sequence
-             * packet outside of the header consumer.
-             */
-            c->packet_seq = 1;
-        } else {
-            fprintf(stderr, "***WARNING*** Packets appear to be out of order conn [%d], header [%d]\n", c->packet_seq, seq);
+        /* Test the packet header. Is it out of sequence? */
+        /* FIXME: The my_client hack is because we're not fully tracking client
+         * state. So if the consumer is a client and the header's zero for no
+         * reason, it's probably a new command packet and will get fixed
+         * later.
+         */
+        if (c->packet_seq != seq && !(c->my_type == my_client && seq == 0)) {
+            fprintf(stderr, "***WARNING*** Packets appear to be out of order: type [%d] conn [%d], header [%d]\n", c->my_type, c->packet_seq, seq);
         }
         return c->readto;
-    } else {
-        return -1;
     }
+
+    return -1;
 }
 
 /* TODO: In another life this should be some crazy struct buffer. */
@@ -760,7 +750,6 @@ static int my_wire_handshake_packet(conn *c, void *pkt)
     base += 3;
     int1store(&c->wbuf[base], c->packet_seq);
     base++;
-    c->packet_seq++;
 
     c->wbuf[base] = p->protocol_version;
     base++;
@@ -967,7 +956,6 @@ static int my_wire_auth_packet(conn *c, void *pkt)
     base += 3;
     int1store(&c->wbuf[base], c->packet_seq);
     base++;
-    c->packet_seq++;
 
     int4store(&c->wbuf[base], p->client_flags);
     base += 4;
@@ -1137,7 +1125,6 @@ static int my_wire_ok_packet(conn *c, void *pkt)
     base += 3;
     int1store(&c->wbuf[base], c->packet_seq);
     base++;
-    c->packet_seq++;
 
     c->wbuf[base] = p->field_count;
     base++;
@@ -1254,7 +1241,6 @@ static int my_wire_err_packet(conn *c, void *pkt)
     base += 3;
     int1store(&c->wbuf[base], c->packet_seq);
     base++;
-    c->packet_seq++;
 
     c->wbuf[base] = p->field_count;
     base++;
@@ -1395,7 +1381,6 @@ static int my_wire_cmd_packet(conn *c, void *pkt)
     base += 3;
     int1store(&c->wbuf[base], 0);
     base++;
-    c->packet_seq++;
 
     c->wbuf[base] = p->command;
     base++;
@@ -1635,6 +1620,9 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     #ifdef DBUG
     fprintf(stdout, "TX START State: %s\n", my_state_name[c->mypstate]);
     #endif
+    /* This might be overridden during processing, so increase it up here */
+    c->packet_seq++;
+
     switch (c->my_type) {
     case my_client:
         /* Doesn't matter what we send to the client right now.
@@ -1663,8 +1651,6 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
             c->last_cmd   = cmd->command;
-            /* Kick off the packet sequencer. */
-            c->packet_seq++;
             switch (c->last_cmd) {
             case COM_QUERY:
                 c->mypstate = mys_sending_rset;
@@ -1712,6 +1698,9 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     /* Default *p to NULL */
     *p = NULL;
 
+    /* Increase the packet sequence. We might manually adjust it later. */
+    c->packet_seq++;
+
     switch (c->my_type) {
     case my_client:
         switch (c->mypstate) {
@@ -1726,6 +1715,8 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
             c->mypstate = myc_sent_cmd;
+            /* Kick off the packet sequencer. */
+            c->packet_seq = 0;
             nargs++;
             break;
         }
