@@ -1833,7 +1833,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
 
         /* Read errors if we detected an error packet. */
         if (*ptype == myp_err) {
-            //*p = my_consume_err_packet(c);
             consumer = my_consume_err_packet;
             c->packet_seq = 0;
             c->mypstate = mys_recv_err;
@@ -1886,7 +1885,6 @@ static int run_protocol(conn *c, int read, int written)
             update_conn_event(c, EV_READ | EV_PERSIST);
             c->mystate  = my_waiting;
             c->mypstate = mys_connect;
-            c->my_type  = my_server;
         case my_waiting:
             /* When in a waiting state, we need to read four bytes to get
              * the packet length and packet number. */
@@ -1997,7 +1995,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     lua_getglobal(L, "callback");
     if (!lua_istable(L, -1)) {
-        lua_settop(L, top - 1);
+        lua_settop(L, 0);
         return 0;
     }
 
@@ -2005,7 +2003,7 @@ static int run_lua_callback(conn *c, int nargs)
     lua_pushnumber(L, c->id);
     lua_gettable(L, -2);
     if (!lua_istable(L, -1)) {
-        lua_settop(L, top - 1);
+        lua_settop(L, 0);
         return 0;
     }
 
@@ -2014,7 +2012,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     /* Now the top o' the stack ought to be a function. */
     if (!lua_isfunction(L, -1)) {
-        lua_settop(L, top - 1);
+        lua_settop(L, 0);
         return 0;
     }
 
@@ -2026,6 +2024,7 @@ static int run_lua_callback(conn *c, int nargs)
     /* FIXME: Debug crap. */
     if (!lua_isfunction(L, 1) || lua_gettop(L) < nargs + 1) {
         fprintf(stderr, "ERROR running callback, dumping stack\n");
+        lua_settop(L, 0);
         dump_stack();
         return 0;
     }
@@ -2034,7 +2033,6 @@ static int run_lua_callback(conn *c, int nargs)
     if (lua_pcall(L, nargs, 1, 0) != 0) {
         fprintf(stderr, "Error running callback function: %s\n", lua_tostring(L, -1));
         lua_pop(L, -1);
-        dump_stack();
     }
 
     if (lua_isnumber(L, -1)) {
@@ -2185,6 +2183,7 @@ static int new_connect(lua_State *L)
 
     /* Special state for outbound requests. */
     c->mystate = my_connect;
+    c->my_type = my_server;
 
     /* We watch for a write to this guy to see if it succeeds */
     add_conn_event(c, EV_WRITE);
