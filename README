@@ -60,6 +60,15 @@ client will get what you need.
   few times, select a couple rows from small tables, and watch the output fly
   by in the window.
 
+You may find other demos in the 'lua' directory. The default is named
+'startup.lua' (I know, not very inventive). As of writing there's also
+'demo-direct.lua' which demos a simpler 1:1 connection mapping.
+
+In order to start a different demo, run with the --startfile command and point
+to the file, ie:
+
+./dpm --startfile lua/demo-direct.lua
+
 FEEDBACK
 --------
 
