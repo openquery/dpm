@@ -2090,9 +2090,11 @@ static int proxy_connect(lua_State *L)
     conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
     conn **r = (conn **)luaL_checkudata(L, 2, "myp.conn");
 
-    if ((*c)->my_type != my_client ||
-        (*r)->my_type != my_server) {
-        luaL_error(L, "Arg 1 must be a client, Arg 2 must be a backend");
+    if ((*c)->my_type != my_client) {
+        luaL_error(L, "Arg 1 must be a valid client");
+    }
+    if ((*r)->my_type != my_server) {
+        luaL_error(L, "Arg 2 must be a valid backend");
     }
 
     (*c)->remote = (struct conn *)*r;
