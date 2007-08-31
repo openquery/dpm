@@ -1850,107 +1850,103 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
  */
 static int run_protocol(conn *c, int read, int written)
 {
-    int finished = 0;
     int err = 0;
     int next_packet;
     socklen_t errsize = sizeof(err);
     conn *remote = NULL;
 
-    while (!finished) {
-        switch (c->mystate) {
-        case my_connect:
-            /* Socket was connecting. Lets see if it's good now. */
-            if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errsize) < 0) {
-                perror("Running getsockopt on outbound connect");
-                return -1;
-            }
-            if (err != 0) {
-                if (verbose)
-                    fprintf(stderr, "Error in connecting outbound socket\n");
-                return -1;
-            }
-
-            /* Neat. we're all good. */
-            if (verbose)
-                fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
-            update_conn_event(c, EV_READ | EV_PERSIST);
-            c->mystate  = my_reading;
-            c->mypstate = mys_connect;
-        case my_reading:
-            /* If we've read the full packet size, we can write it to the
-             * other guy
-             * FIXME: Making assumptions about remote, duh :P
-             */
-
-            while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-                int ptype = myp_none;
-                void *p = NULL;
-                int ret = 0;
-                int cbret = 0;
-
-                #ifdef DBUG
-                fprintf(stdout, "Read from %llu packet size %u.\n", (unsigned long long) c->id, c->packetsize);
-                #endif
-
-                /* Drive the packet state machine. */
-                ret = received_packet(c, &p, &ptype, c->rbuf[c->readto + 4]);
-
-                /* Once all 'received packets' return a type, we can sanity
-                 * check that a pointer was returned. */
-                /* if (p == NULL) return -1; */
-
-                if (c->next_call == -1 || c->next_call == c->mypstate) {
-                    cbret = run_lua_callback(c, ret);
-                }
-
-                /* Handle writing to a remote if one exists */
-                if ( c->remote && ( cbret == MYP_OK || cbret == MYP_FLUSH_DISCONNECT ) ) {
-                    remote = (conn *)c->remote;
-                    if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
-                        return -1;
-                    }
-
-                    /* Drive other half of state machine. */
-                    ret = sent_packet(remote, &p, ptype, c->field_count);
-                    /* TODO: at this point we could decide not to send a
-                     * packet. worth investigating?
-                     */
-                    memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
-                    remote->towrite += c->packetsize;
-                } else if ( c->remote && ( cbret == MYP_NOPROXY ) ) {
-                    /* Condition to flush what was written, but don't proxy
-                     * the last packet in the pipeline
-                     */
-                    
-                    remote = (conn *)c->remote;
-                }
-
-                /* Flush (above) and disconnect the conns */
-                if (remote && cbret == MYP_FLUSH_DISCONNECT) {
-                    remote->remote = NULL;
-                    c->remote      = NULL;
-                }
-
-                /* Copied in the packet; advance to next packet. */
-                c->readto += c->packetsize;
-            }
-            if (c == NULL)
-                break;
-
-            if (c->towrite && handle_write(c) == -1)
-                return -1;
-
-            if (remote && handle_write(remote) == -1)
-                return -1;
-
-            /* Any pending packet reads? If none, reset boofer. */
-            if (c->readto == c->read) {
-                c->read    = 0;
-                c->readto  = 0;
-            }
-            break;
+    switch (c->mystate) {
+    case my_connect:
+        /* Socket was connecting. Lets see if it's good now. */
+        if (getsockopt(c->fd, SOL_SOCKET, SO_ERROR, &err, &errsize) < 0) {
+            perror("Running getsockopt on outbound connect");
+            return -1;
         }
-        finished++;
+        if (err != 0) {
+            if (verbose)
+                fprintf(stderr, "Error in connecting outbound socket\n");
+            return -1;
+        }
+
+        /* Neat. we're all good. */
+        if (verbose)
+            fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
+        update_conn_event(c, EV_READ | EV_PERSIST);
+        c->mystate  = my_reading;
+        c->mypstate = mys_connect;
+    case my_reading:
+        /* If we've read the full packet size, we can write it to the
+         * other guy
+         * FIXME: Making assumptions about remote, duh :P
+         */
+
+        while ( (next_packet = my_next_packet_start(c)) != -1 ) {
+            int ptype = myp_none;
+            void *p = NULL;
+            int ret = 0;
+            int cbret = 0;
+
+            #ifdef DBUG
+            fprintf(stdout, "Read from %llu packet size %u.\n", (unsigned long long) c->id, c->packetsize);
+            #endif
+
+            /* Drive the packet state machine. */
+            ret = received_packet(c, &p, &ptype, c->rbuf[c->readto + 4]);
+
+            /* Once all 'received packets' return a type, we can sanity
+             * check that a pointer was returned. */
+            /* if (p == NULL) return -1; */
+
+            if (c->next_call == -1 || c->next_call == c->mypstate) {
+                cbret = run_lua_callback(c, ret);
+            }
+
+            /* Handle writing to a remote if one exists */
+            if ( c->remote && ( cbret == MYP_OK || cbret == MYP_FLUSH_DISCONNECT ) ) {
+                remote = (conn *)c->remote;
+                if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
+                    return -1;
+                }
+
+                /* Drive other half of state machine. */
+                ret = sent_packet(remote, &p, ptype, c->field_count);
+                /* TODO: at this point we could decide not to send a
+                 * packet. worth investigating?
+                 */
+                memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
+                remote->towrite += c->packetsize;
+            } else if ( c->remote && ( cbret == MYP_NOPROXY ) ) {
+                /* Condition to flush what was written, but don't proxy
+                 * the last packet in the pipeline
+                 */
+                    
+                remote = (conn *)c->remote;
+            }
+
+            /* Flush (above) and disconnect the conns */
+            if (remote && cbret == MYP_FLUSH_DISCONNECT) {
+                remote->remote = NULL;
+                c->remote      = NULL;
+            }
+
+            /* Copied in the packet; advance to next packet. */
+            c->readto += c->packetsize;
+        }
+        if (c == NULL)
+            break;
+
+        if (c->towrite && handle_write(c) == -1)
+            return -1;
+
+        if (remote && handle_write(remote) == -1)
+            return -1;
+
+        /* Any pending packet reads? If none, reset boofer. */
+        if (c->readto == c->read) {
+            c->read    = 0;
+            c->readto  = 0;
+        }
+        break;
     }
 
     return 0;
