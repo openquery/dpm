@@ -287,7 +287,7 @@ static int handle_write(conn *c)
 
     for(;;) {
         if (c->written == c->towrite) {
-            c->mystate = my_waiting;
+            c->mystate = my_reading;
             c->written = 0;
             c->towrite = 0;
             update_conn_event(c, EV_READ | EV_PERSIST);
@@ -387,7 +387,7 @@ static conn *init_conn(int newfd)
     newc->fd = newfd;
     newc->id = my_connection_counter++;
     newc->ev_flags = EV_READ | EV_PERSIST;
-    newc->mystate = my_waiting;
+    newc->mystate = my_reading;
     newc->mypstate = my_waiting;
 
     /* Misc inits, for clarity. */
@@ -696,7 +696,7 @@ static int my_next_packet_start(conn *c)
     int seq = 0;
     /* A couple sanity checks... First is that we must have enough bytes
      * readable to try consuming a header. */
-    if (c->readto + 4 > c->read)
+    if (c->readto + 3 > c->read)
         return -1;
 
     c->packetsize = uint3korr(&c->rbuf[c->readto]);
@@ -1874,17 +1874,8 @@ static int run_protocol(conn *c, int read, int written)
             if (verbose)
                 fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
             update_conn_event(c, EV_READ | EV_PERSIST);
-            c->mystate  = my_waiting;
+            c->mystate  = my_reading;
             c->mypstate = mys_connect;
-        case my_waiting:
-            /* When in a waiting state, we need to read four bytes to get
-             * the packet length and packet number. */
-            if (c->read > 3) {
-                c->mystate = my_reading;
-            } else if (c->packetsize == 0) {
-                break;
-            }
-            /* Fall through if we're expecting a packet. */
         case my_reading:
             /* If we've read the full packet size, we can write it to the
              * other guy
@@ -1956,7 +1947,6 @@ static int run_protocol(conn *c, int read, int written)
             if (c->readto == c->read) {
                 c->read    = 0;
                 c->readto  = 0;
-                c->mystate = my_waiting;
             }
             break;
         }
