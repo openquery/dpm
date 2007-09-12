@@ -1552,6 +1552,8 @@ static void *my_consume_field_packet(conn *c)
     /* Default is optional? */
     /* FIXME: I might be confusing this as a length encoded number, when it's
      * a length encoded string of binary data. */
+    /* Notes: It's a length encoded string... but the length can also be the
+     * NULL value, and thus no data? Complex corner case, fix later. */
     if (c->packetsize > (base - c->readto)) {
         p->my_default = my_read_binary_field(c->rbuf, &base);
     }
