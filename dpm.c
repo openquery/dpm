@@ -98,6 +98,9 @@ static void my_free_cmd_packet(void *pkt);
 static int my_wire_cmd_packet(conn *c, void *pkt);
 
 static void *my_consume_rset_packet(conn *c);
+static void my_free_rset_packet(void *pkt);
+static int my_wire_rset_packet(conn *c, void *pkt);
+
 static void *my_consume_field_packet(conn *c);
 static int my_consume_row_packet(conn *c);
 static void *my_consume_eof_packet(conn *c);
@@ -1428,6 +1431,34 @@ static void *my_consume_cmd_packet(conn *c)
     return p;
 }
 
+void *my_new_rset_packet()
+{
+    my_rset_packet *p;
+
+    p = (my_rset_packet *)malloc( sizeof(my_rset_packet) );
+    if (p == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_rset_packet));
+
+    p->h.ptype   = myp_rset;
+    p->h.free_me = my_free_rset_packet;
+    p->h.to_buf  = my_wire_rset_packet;
+
+    return p;
+}
+
+/* It's _very_ important that anything referred to by 'fields' gets
+ * unreferenced. This can happen either as a custom gc handler or in here.
+ */
+static void my_free_rset_packet(void *pkt)
+{
+    my_rset_packet *p = (my_rset_packet *)pkt;
+    free(p->fields);
+    free(p);
+}
+
 static void *my_consume_rset_packet(conn *c)
 {
     my_rset_packet *p;
@@ -1441,8 +1472,9 @@ static void *my_consume_rset_packet(conn *c)
     }
     memset(p, 0, sizeof(my_rset_packet));
 
-    p->h.ptype = myp_rset;
-    /* FIXME: add free and store handlers */
+    p->h.ptype   = myp_rset;
+    p->h.free_me = my_free_rset_packet;
+    p->h.to_buf  = my_wire_rset_packet;
 
     p->field_count = my_read_binary_field(c->rbuf, &base);
     c->field_count = p->field_count;
@@ -1451,7 +1483,32 @@ static void *my_consume_rset_packet(conn *c)
         p->extra = my_read_binary_field(c->rbuf, &base);
     }
 
+    p->fields = malloc( sizeof(my_rset_field_header) * p->field_count );
+    if (p->fields == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+
     return p;
+}
+
+/* This is a magic packet, but the only thing we need to really send
+ * will be the one field. We can send 'extra' once I know what the crap it is.
+ */
+static int my_wire_rset_packet(conn *c, void *pkt)
+{
+    my_rset_packet *p = (my_rset_packet *)pkt;
+    int base         = c->towrite;
+
+    int psize = 4; /* misc chunks + header */
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    my_write_binary_field(&c->wbuf[base], &base, p->field_count);
+
+    return 0;
 }
 
 static void *my_consume_field_packet(conn *c)

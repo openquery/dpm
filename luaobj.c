@@ -40,6 +40,12 @@ static int obj_uint32_t(lua_State *L, void *var, void *var2);
 static int obj_uint16_t(lua_State *L, void *var, void *var2);
 static int obj_uint8_t(lua_State *L, void *var, void *var2);
 
+/* Resultset accessors. */
+static int obj_rset_add_field(lua_State *L, void *var, void *var2);
+static int obj_rset_remove_field(lua_State *L, void *var, void *var2);
+static int obj_rset_pack_row(lua_State *L, void *var, void *var2);
+static int obj_rset_parse_row(lua_State *L, void *var, void *var2);
+
 static const obj_reg conn_regs [] = {
     {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id), 0},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
@@ -91,6 +97,18 @@ static const obj_reg cmd_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+/* A resultset is a magic object, see below. */
+/* The 'field_count' is read only since it should only be adjusted as fields
+ * are actually added or removed. */
+static const obj_reg rset_regs [] = {
+    {"field_count", obj_uint64_t, LO_READONLY, offsetof(my_rset_packet, field_count), 0},
+    {"add_field", obj_rset_add_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
+    {"remove_field", obj_rset_remove_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
+    {"pack_row", obj_rset_pack_row, LO_READONLY, offsetof(my_rset_packet, fields), 0},
+    {"parse_row", obj_rset_parse_row, LO_READONLY, offsetof(my_rset_packet, fields), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", packet_gc},
     {NULL, NULL},
@@ -137,6 +155,34 @@ void dump_stack()
 
 /* Accessor functions */
 
+/* These are magic accessors for the resultset object.
+ * The resultset must hold references to valid field objects in order for
+ * there to be a "low level" mechanism for packing and parsing row packets.
+ *
+ * Fields are added or removed one at a time to build up the object, then rows
+ * are packed or parsed as fast as we can. using local pointers.
+ * This means it's important that the resultset destructor remember to
+ * remove the lua reference on any field objects so they may be garbage
+ * collected.
+ */
+static int obj_rset_add_field(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
+
+static int obj_rset_remove_field(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
+static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
+
+static int obj_rset_parse_row(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
 /* Storage of MySQL "dynamic length" variables */
 /* FIXME: All of these malloc'ing string functions need to bubble errors
  * up to lua.
@@ -400,7 +446,7 @@ static int obj_index(lua_State *L)
             luaL_error(L, "Value is read only");
         }
         p = lua_touserdata(L, 1);
-        return f->func(L, *p + f->offset1, f->offset2 ? *p + f->offset2 : 0);
+        return f->func(L, *p + f->offset1, f->offset2 ? *p + f->offset2 : *p);
     } else {
         luaL_error(L, "Not a light user data object... [%s]", lua_typename(L, lua_type(L, lua_upvalueindex(1))));
     }

@@ -278,12 +278,6 @@ typedef struct {
     char *argument;     /* Non-null-terminated string that was the cmd */
 } my_cmd_packet;
 
-typedef struct {
-    my_packet_header h;
-    uint64_t       field_count; /* Actually a field count this time. */
-    uint64_t       extra; /* Optional random junk. */
-} my_rset_packet;
-
 /* NOTE: Do we need to store the length of 'fields' anywhere? */
 typedef struct {
     my_packet_header h;
@@ -317,6 +311,18 @@ typedef struct {
 } my_eof_packet;
 
 typedef struct {
+    my_field_packet *f; /* Pointer to a field packet struct. */
+    int ref; /* Int reference for luaL_ref and unref, points to field obj */
+} my_rset_field_header;
+
+typedef struct {
+    my_packet_header h;
+    uint64_t       field_count; /* Actually a field count this time. */
+    uint64_t       extra; /* Optional random junk. */
+    my_rset_field_header *fields; /* Pointer array to field structures. */
+} my_rset_packet;
+
+typedef struct {
     size_t  len;
     char    data[1];
 } cbuffer_t;
@@ -331,6 +337,7 @@ void *my_new_auth_packet();
 void *my_new_ok_packet();
 void *my_new_err_packet();
 void *my_new_cmd_packet();
+void *my_new_rset_packet();
 
 /* Basic string buffering functions, which I can expand on later.
  */
