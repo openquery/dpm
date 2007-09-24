@@ -167,6 +167,11 @@ void dump_stack()
  * remove the lua reference on any field objects so they may be garbage
  * collected.
  */
+
+/* It will be faster if you pre-allocate the field storage by specifying the
+ * final field_count ahead of time. The 'add_field' function will also expand
+ * memory as needed to make it easier to use in obscure ways.
+ */
 static int obj_rset_field_count(lua_State *L, void *var, void *var2)
 {
     return 0;
