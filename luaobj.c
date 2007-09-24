@@ -41,6 +41,7 @@ static int obj_uint16_t(lua_State *L, void *var, void *var2);
 static int obj_uint8_t(lua_State *L, void *var, void *var2);
 
 /* Resultset accessors. */
+static int obj_rset_field_count(lua_State *L, void *var, void *var2);
 static int obj_rset_add_field(lua_State *L, void *var, void *var2);
 static int obj_rset_remove_field(lua_State *L, void *var, void *var2);
 static int obj_rset_pack_row(lua_State *L, void *var, void *var2);
@@ -98,10 +99,11 @@ static const obj_reg cmd_regs [] = {
 };
 
 /* A resultset is a magic object, see below. */
-/* The 'field_count' is read only since it should only be adjusted as fields
- * are actually added or removed. */
+/* The 'field_count' is handled specially because we need memory for the
+ * field packet storage.
+ */
 static const obj_reg rset_regs [] = {
-    {"field_count", obj_uint64_t, LO_READONLY, offsetof(my_rset_packet, field_count), 0},
+    {"field_count", obj_rset_field_count, LO_READWRITE, offsetof(my_rset_packet, field_count), 0},
     {"add_field", obj_rset_add_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
     {"remove_field", obj_rset_remove_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
     {"pack_row", obj_rset_pack_row, LO_READONLY, offsetof(my_rset_packet, fields), 0},
@@ -165,6 +167,11 @@ void dump_stack()
  * remove the lua reference on any field objects so they may be garbage
  * collected.
  */
+static int obj_rset_field_count(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
+
 static int obj_rset_add_field(lua_State *L, void *var, void *var2)
 {
     return 0;
