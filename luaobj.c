@@ -466,10 +466,97 @@ static int obj_index(lua_State *L)
     return 0;
 }
 
+/* This is "heavily inspired" by proxy_lua_init_global_fenv in MySQL Proxy.
+ * I say inspired by, even though this is a close copy, because it inspired me
+ * to stop trying to find a way to build it off of proxy.h and just do it.
+ * Really wish there was a way to only write these once.
+ */
+int register_obj_defines(lua_State *L)
+{
+
+#define MYP_D(x) \
+    lua_pushinteger(L, x); \
+    lua_setfield(L, -2, #x);
+
+    /* Proxy internal defines. */
+
+    MYP_D(MYP_OK);
+    MYP_D(MYP_NOPROXY);
+    MYP_D(MYP_FLUSH_DISCONNECT);
+
+    /* MySQL Protocol layer defines. */
+
+    MYP_D(COM_SLEEP);
+    MYP_D(COM_QUIT);
+    MYP_D(COM_INIT_DB);
+    MYP_D(COM_QUERY);
+    MYP_D(COM_FIELD_LIST);
+    MYP_D(COM_CREATE_DB);
+    MYP_D(COM_DROP_DB);
+    MYP_D(COM_REFRESH);
+    MYP_D(COM_SHUTDOWN);
+    MYP_D(COM_STATISTICS);
+    MYP_D(COM_PROCESS_INFO);
+    MYP_D(COM_CONNECT);
+    MYP_D(COM_PROCESS_KILL);
+    MYP_D(COM_DEBUG);
+    MYP_D(COM_PING);
+    MYP_D(COM_TIME);
+    MYP_D(COM_DELAYED_INSERT);
+    MYP_D(COM_CHANGE_USER);
+    MYP_D(COM_BINLOG_DUMP);
+    MYP_D(COM_TABLE_DUMP);
+    MYP_D(COM_CONNECT_OUT);
+    MYP_D(COM_REGISTER_SLAVE);
+    MYP_D(COM_STMT_PREPARE);
+    MYP_D(COM_STMT_EXECUTE);
+    MYP_D(COM_STMT_SEND_LONG_DATA);
+    MYP_D(COM_STMT_CLOSE);
+    MYP_D(COM_STMT_RESET);
+    MYP_D(COM_SET_OPTION);
+    MYP_D(COM_STMT_FETCH);
+    MYP_D(COM_DAEMON);
+
+    MYP_D(MYSQL_TYPE_DECIMAL);
+    MYP_D(MYSQL_TYPE_NEWDECIMAL);
+    MYP_D(MYSQL_TYPE_TINY);
+    MYP_D(MYSQL_TYPE_SHORT);
+    MYP_D(MYSQL_TYPE_LONG);
+    MYP_D(MYSQL_TYPE_FLOAT);
+    MYP_D(MYSQL_TYPE_DOUBLE);
+    MYP_D(MYSQL_TYPE_NULL);
+    MYP_D(MYSQL_TYPE_TIMESTAMP);
+    MYP_D(MYSQL_TYPE_LONGLONG);
+    MYP_D(MYSQL_TYPE_INT24);
+    MYP_D(MYSQL_TYPE_DATE);
+    MYP_D(MYSQL_TYPE_TIME);
+    MYP_D(MYSQL_TYPE_DATETIME);
+    MYP_D(MYSQL_TYPE_YEAR);
+    MYP_D(MYSQL_TYPE_NEWDATE);
+    MYP_D(MYSQL_TYPE_ENUM);
+    MYP_D(MYSQL_TYPE_SET);
+    MYP_D(MYSQL_TYPE_TINY_BLOB);
+    MYP_D(MYSQL_TYPE_MEDIUM_BLOB);
+    MYP_D(MYSQL_TYPE_LONG_BLOB);
+    MYP_D(MYSQL_TYPE_BLOB);
+    MYP_D(MYSQL_TYPE_VAR_STRING);
+    MYP_D(MYSQL_TYPE_STRING);
+    MYP_D(MYSQL_TYPE_GEOMETRY);
+    MYP_D(MYSQL_TYPE_BIT);
+
+    return 1;
+}
+
 /* Registers connection object + methods, defined at top, into lua */
 int register_obj_types(lua_State *L)
 {
     obj_toreg *r = regs;
+
+    /* Call a separate function for filtering MYSQL_BLAH and related defines
+     * into the lua namespace.
+     */
+    register_obj_defines(L);
+
     /* We need to iterate twice... Since the main function table _must_
      * be at the top of the stack at the time we're being called.
      */
@@ -495,4 +582,3 @@ int register_obj_types(lua_State *L)
 
     return 1;
 }
-
