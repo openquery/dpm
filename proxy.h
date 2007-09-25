@@ -96,8 +96,24 @@
 #define SERVER_VERSION_LENGTH 60
 #define SQLSTATE_LENGTH 5
 
-/* End defines from mysql_com.h */
+#define NOT_NULL_FLAG   1       /* Field can't be NULL */
+#define PRI_KEY_FLAG    2       /* Field is part of a primary key */
+#define UNIQUE_KEY_FLAG 4       /* Field is part of a unique key */
+#define MULTIPLE_KEY_FLAG 8     /* Field is part of a key */
+#define BLOB_FLAG   16      /* Field is a blob */
+#define UNSIGNED_FLAG   32      /* Field is unsigned */
+#define ZEROFILL_FLAG   64      /* Field is zerofill */
+#define BINARY_FLAG 128     /* Field is binary   */
 
+/* The following are only sent to new clients */
+#define ENUM_FLAG   256     /* field is an enum */
+#define AUTO_INCREMENT_FLAG 512     /* field is a autoincrement field */
+#define TIMESTAMP_FLAG  1024        /* Field is a timestamp */
+#define SET_FLAG    2048        /* field is a set */
+#define NO_DEFAULT_VALUE_FLAG 4096  /* Field doesn't have default value */
+#define NUM_FLAG    32768       /* Field is num (for clients) */
+
+/* Integer values for commands */
 enum my_proto_commands {
     COM_SLEEP = 0,
     COM_QUIT,
@@ -131,6 +147,39 @@ enum my_proto_commands {
     COM_DAEMON,
     COM_END,
 };
+
+/* Integer values for mysql types. */
+enum my_field_types {
+    MYSQL_TYPE_DECIMAL = 0,
+    MYSQL_TYPE_TINY,
+    MYSQL_TYPE_SHORT,
+    MYSQL_TYPE_LONG,
+    MYSQL_TYPE_FLOAT,
+    MYSQL_TYPE_DOUBLE,
+    MYSQL_TYPE_NULL,
+    MYSQL_TYPE_TIMESTAMP,
+    MYSQL_TYPE_LONGLONG,
+    MYSQL_TYPE_INT24,
+    MYSQL_TYPE_DATE,
+    MYSQL_TYPE_TIME,
+    MYSQL_TYPE_DATETIME,
+    MYSQL_TYPE_YEAR,
+    MYSQL_TYPE_NEWDATE,
+    MYSQL_TYPE_VARCHAR,
+    MYSQL_TYPE_BIT,
+    MYSQL_TYPE_NEWDECIMAL=246,
+    MYSQL_TYPE_ENUM=247,
+    MYSQL_TYPE_SET=248,
+    MYSQL_TYPE_TINY_BLOB=249,
+    MYSQL_TYPE_MEDIUM_BLOB=250,
+    MYSQL_TYPE_LONG_BLOB=251,
+    MYSQL_TYPE_BLOB=252,
+    MYSQL_TYPE_VAR_STRING=253,
+    MYSQL_TYPE_STRING=254,
+    MYSQL_TYPE_GEOMETRY=255
+};
+
+/* End defines from mysql_com.h */
 
 /* MySQL protocol states */
 enum myconn_states {
