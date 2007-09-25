@@ -18,13 +18,10 @@
 -- Hello-world style initialization script for proxy.
 -- See bottom of file for connection, listening information.
 
--- Name -> value defines for lua
-MY_SERVER = 0
-MY_CLIENT = 1
-
-MYP_OK = 0 -- "OK" means it was handled, and okay to send packet onward.
-MYP_NOPROXY = 1 -- assume packet was handled earlier, don't copy.
-MYP_FLUSH_DISCONNECT = 2 -- Flush packet on wire and disconnect clients
+-- MYP_OK (default)      packet was handled, and okay to send packet onward.
+-- MYP_NOPROXY           assume packet was handled earlier, don't send
+--                       original packet.
+-- MYP_FLUSH_DISCONNECT  Flush packet on wire and disconnect clients
 
 callback = {}
 clients  = {}
@@ -84,7 +81,7 @@ function new_command(cmd_pkt, cid)
     myp.proxy_until(clients[cid], 6) -- myc_sent_cmd
     if (cmd_pkt:command() == 1) then
         -- allow the client to close, but don't close the server.
-        return MYP_NOPROXY
+        return myp.MYP_NOPROXY
     end
     myp.proxy_connect(clients[cid], backend)
     if (cmd_pkt:argument() == "HELLO") then
@@ -92,13 +89,13 @@ function new_command(cmd_pkt, cid)
         -- Packet has been rewritten. Attach the backend and wire it.
         myp.wire_packet(backend, cmd_pkt)
         -- Finally, return requesting to not proxy original packet.
-        return MYP_NOPROXY
+        return myp.MYP_NOPROXY
    end
 end
 
 function finished_command(cid)
     print "Backend completed handling command."
-    return MYP_FLUSH_DISCONNECT
+    return myp.MYP_FLUSH_DISCONNECT
 end
 
 function server_err(err_pkt, cid)

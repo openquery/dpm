@@ -19,14 +19,6 @@
 -- Each connecting client gets a dedicated backend connection.
 -- Authentication is handled by the server instead of the proxy.
 
--- Name -> value defines for lua
-MY_SERVER = 0
-MY_CLIENT = 1
-
-MYP_OK = 0 -- "OK" means it was handled, and okay to send packet onward.
-MYP_NOPROXY = 1 -- assume packet was handled earlier, don't copy.
-MYP_FLUSH_DISCONNECT = 2 -- Flush packet on wire and disconnect clients
-
 callback = {}
 clients  = {}
 backends = {}
@@ -53,7 +45,7 @@ function new_client(c)
     -- This is a special case:
     -- When a client connects we don't send it a packet. Wait for the backend
     -- to proxy one along.
-    return MYP_NOPROXY
+    return myp.MYP_NOPROXY
 end
 
 function new_command(cmd_pkt, cid)
@@ -66,7 +58,7 @@ function new_command(cmd_pkt, cid)
         -- Packet has been rewritten. Attach the backend and wire it.
         myp.wire_packet(backends[cid], cmd_pkt)
         -- Finally, return requesting to not proxy original packet.
-        return MYP_NOPROXY
+        return myp.MYP_NOPROXY
    end
 end
 
