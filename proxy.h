@@ -224,8 +224,8 @@ enum myproto_states {
 };
 
 enum my_types {
-    my_server, /* This conn is a server connection */
-    my_client, /* This conn is a client connection */
+    MY_SERVER, /* Conn is a server connection */
+    MY_CLIENT, /* Conn is a client connection */
 };
 
 #define MYP_OK 0

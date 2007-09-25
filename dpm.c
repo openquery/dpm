@@ -398,7 +398,7 @@ static conn *init_conn(int newfd)
     newc->readto      = 0;
     newc->written     = 0;
     newc->towrite     = 0;
-    newc->my_type     = my_client;
+    newc->my_type     = MY_CLIENT;
     newc->packetsize  = 0;
     newc->field_count = 0;
     newc->last_cmd    = 0;
@@ -475,7 +475,7 @@ static void handle_event(int fd, short event, void *arg)
         #endif
 
         newc->mypstate  = myc_wait_handshake;
-        newc->my_type   = my_client;
+        newc->my_type   = MY_CLIENT;
 
         /* Pass the object up into lua for later inspection. */
         new_obj(L, newc, "myp.conn");
@@ -709,12 +709,12 @@ static int my_next_packet_start(conn *c)
     /* If we've read a packet header, see if we have the whole packet. */
     if (c->read - c->readto >= c->packetsize) {
         /* Test the packet header. Is it out of sequence? */
-        /* FIXME: The my_client hack is because we're not fully tracking client
+        /* FIXME: The MY_CLIENT hack is because we're not fully tracking client
          * state. So if the consumer is a client and the header's zero for no
          * reason, it's probably a new command packet and will get fixed
          * later.
          */
-        if (c->packet_seq != seq && !(c->my_type == my_client && seq == 0)) {
+        if (c->packet_seq != seq && !(c->my_type == MY_CLIENT && seq == 0)) {
             fprintf(stderr, "***WARNING*** Packets appear to be out of order: type [%d] conn [%d], header [%d]\n", c->my_type, c->packet_seq, seq);
         }
         return c->readto;
@@ -1683,7 +1683,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     c->packet_seq++;
 
     switch (c->my_type) {
-    case my_client:
+    case MY_CLIENT:
         /* Doesn't matter what we send to the client right now.
          * The clients maintain their own state based on what command they
          * just sent. We can add state tracking in the future so you can write
@@ -1698,7 +1698,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             c->mypstate = myc_wait_auth;
         }
         break;
-    case my_server:
+    case MY_SERVER:
         switch (c->mypstate) {
         case mys_wait_auth:
             assert(ptype == myp_auth);
@@ -1761,7 +1761,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     c->packet_seq++;
 
     switch (c->my_type) {
-    case my_client:
+    case MY_CLIENT:
         switch (c->mypstate) {
         case myc_wait_auth:
             consumer = my_consume_auth_packet;
@@ -1780,7 +1780,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             break;
         }
         break;
-    case my_server:
+    case MY_SERVER:
         switch (c->mypstate) {
         case mys_connect:
             consumer = my_consume_handshake_packet;
@@ -2135,10 +2135,10 @@ static int proxy_connect(lua_State *L)
     conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
     conn **r = (conn **)luaL_checkudata(L, 2, "myp.conn");
 
-    if ((*c)->my_type != my_client) {
+    if ((*c)->my_type != MY_CLIENT) {
         luaL_error(L, "Arg 1 must be a valid client");
     }
-    if ((*r)->my_type != my_server) {
+    if ((*r)->my_type != MY_SERVER) {
         luaL_error(L, "Arg 2 must be a valid backend");
     }
 
@@ -2221,7 +2221,7 @@ static int new_connect(lua_State *L)
 
     /* Special state for outbound requests. */
     c->mystate = my_connect;
-    c->my_type = my_server;
+    c->my_type = MY_SERVER;
 
     /* We watch for a write to this guy to see if it succeeds */
     add_conn_event(c, EV_WRITE);
