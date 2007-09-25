@@ -1588,16 +1588,16 @@ static void *my_consume_field_packet(conn *c)
     /* Skip filler field */
     base++;
 
-    memcpy(&p->charsetnr, &c->rbuf[base], 2);
+    p->charsetnr = uint2korr(&c->rbuf[base]);
     base += 2;
 
-    memcpy(&p->length, &c->rbuf[base], 4);
+    p->length = uint4korr(&c->rbuf[base]);
     base += 4;
 
     p->type = c->rbuf[base];
     base++;
 
-    memcpy(&p->flags, &c->rbuf[base], 2);
+    p->flags = uint2korr(&c->rbuf[base]);
     base += 2;
 
     p->decimals = c->rbuf[base];
