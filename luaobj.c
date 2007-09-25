@@ -480,6 +480,9 @@ int register_obj_defines(lua_State *L)
 
     /* Proxy internal defines. */
 
+    MYP_D(MY_SERVER);
+    MYP_D(MY_CLIENT);
+
     MYP_D(MYP_OK);
     MYP_D(MYP_NOPROXY);
     MYP_D(MYP_FLUSH_DISCONNECT);
