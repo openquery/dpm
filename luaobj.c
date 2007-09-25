@@ -174,7 +174,47 @@ void dump_stack()
  */
 static int obj_rset_field_count(lua_State *L, void *var, void *var2)
 {
-    return 0;
+    my_rset_packet *p = var2;
+    my_rset_field_header *new_fields;
+
+    if (lua_gettop(L) < 2) {
+        lua_pushinteger(L, *(int*)var);
+    } else {
+        uint64_t new_count = (uint64_t)luaL_checkinteger(L, 2);
+
+        /* This number can "technically" be anything, but lets be
+         * reasonable and try to avoid memory implosion. */
+        /* FIXME: Should also ensure it's positive and return error to lua. */
+        if (new_count > 32768)
+            new_count = 32768;
+
+        if (p->fields && new_count > p->field_count) {
+            /* Only have to resize if the new value is bigger. */
+            /* FIXME: I hate this line. */
+            new_fields = realloc(p->fields, ( sizeof (my_rset_field_header) * p->field_count ) + ( sizeof (my_rset_field_header) * ( new_count - p->field_count ) ) );
+
+            /* FIXME: Bubble error to lua. */
+            if (new_fields == NULL) {
+                perror("Realloc fields array");
+                return 0;
+            }
+
+            p->fields = new_fields;
+        } else if (p->fields) {
+            p->fields = malloc( sizeof(my_rset_field_header) * new_count );
+            /* FIXME: Propagate error to lua. */
+            if (p->fields == NULL) {
+                perror("Could not malloc()");
+                return 0;
+            }
+        }
+
+        p->field_count = new_count;
+
+        return 0;
+    }
+
+    return 1;
 }
 
 static int obj_rset_add_field(lua_State *L, void *var, void *var2)

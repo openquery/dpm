@@ -1446,6 +1446,8 @@ void *my_new_rset_packet()
     p->h.free_me = my_free_rset_packet;
     p->h.to_buf  = my_wire_rset_packet;
 
+    p->fields = NULL;
+
     return p;
 }
 
