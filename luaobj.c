@@ -236,24 +236,39 @@ static int obj_rset_field_count(lua_State *L, void *var, void *var2)
     return 1;
 }
 
+/* TODO: Should this allow injecting/removing to/from any point? */
+
+/* Add to end of field header array. Store lua obj reference and cache
+ * its internal pointer for later use.
+ */
 static int obj_rset_add_field(lua_State *L, void *var, void *var2)
 {
     return 0;
 }
 
+/* Pop field off of the end. Dereference the object and return it to lua? */
 static int obj_rset_remove_field(lua_State *L, void *var, void *var2)
 {
     return 0;
 }
+
+/* Iterate over a table of columns passed in and store them as mysql length
+ * encoded strings into a buffer. Can use lua's string buffer, or our own.
+ */
 static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
 {
     return 0;
 }
 
+/* Iterate over the associated fields to pull length encoded values out of a
+ * row packet and into a lua table, return the table. Should attempt to store
+ * numerics as numeric, strings as strings.
+ */
 static int obj_rset_parse_row(lua_State *L, void *var, void *var2)
 {
     return 0;
 }
+
 /* Storage of MySQL "dynamic length" variables */
 /* FIXME: All of these malloc'ing string functions need to bubble errors
  * up to lua.

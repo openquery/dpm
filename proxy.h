@@ -368,6 +368,7 @@ typedef struct {
     my_packet_header h;
     uint64_t       field_count; /* Actually a field count this time. */
     uint64_t       extra; /* Optional random junk. */
+    uint64_t       fields_total; /* Number of fields actually associated. */
     my_rset_field_header *fields; /* Pointer array to field structures. */
 } my_rset_packet;
 
