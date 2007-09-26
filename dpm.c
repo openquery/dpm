@@ -1617,6 +1617,8 @@ static void *my_consume_field_packet(conn *c)
         p->my_default = my_read_binary_field(c->rbuf, &base);
     }
 
+    new_obj(L, p, "myp.field");
+
     return p;
 }
 
@@ -1845,7 +1847,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 *ptype = myp_err;
                 break;
             default:
-                my_consume_field_packet(c);
+                consumer = my_consume_field_packet;
                 *ptype = myp_field;
             }
             break;

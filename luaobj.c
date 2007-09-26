@@ -47,6 +47,9 @@ static int obj_rset_remove_field(lua_State *L, void *var, void *var2);
 static int obj_rset_pack_row(lua_State *L, void *var, void *var2);
 static int obj_rset_parse_row(lua_State *L, void *var, void *var2);
 
+/* Special field accessor. */
+static int obj_field_full(lua_State *L, void *var, void *var2);
+
 static const obj_reg conn_regs [] = {
     {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id), 0},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
@@ -111,6 +114,15 @@ static const obj_reg rset_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+/* Field packets are not magic, but different. For consistency
+ * we should have one accessor for every field, but desiring a tiny bit
+ * of efficiency (for now) the dynamic part of the packet is only rewriteable.
+ */
+static const obj_reg field_regs [] = {
+    {"full", obj_field_full, LO_READWRITE, 0, 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", packet_gc},
     {NULL, NULL},
@@ -123,6 +135,7 @@ static const obj_toreg regs [] = {
     {"myp.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
     {"myp.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
     {"myp.cmd", cmd_regs, generic_m, my_new_cmd_packet, "new_cmd_pkt"},
+    {"myp.field", field_regs, generic_m, NULL, "new_field_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -156,6 +169,12 @@ void dump_stack()
 }
 
 /* Accessor functions */
+
+/* Stub for field full (re)write accessor. */
+static int obj_field_full(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
 
 /* These are magic accessors for the resultset object.
  * The resultset must hold references to valid field objects in order for
