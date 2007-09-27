@@ -243,12 +243,44 @@ static int obj_rset_field_count(lua_State *L, void *var, void *var2)
  */
 static int obj_rset_add_field(lua_State *L, void *var, void *var2)
 {
+    my_field_packet **f = luaL_checkudata(L, 1, "myp.field");
+    my_rset_packet *p   = var2;
+    my_rset_field_header *new_fields;
+
+    if (!(*f)->fields)
+        luaL_error(L, "Must use initialized field object");
+
+    /* field_count describes the size of the fields array... */
+    if (p->field_count < p->fields_total + 1) {
+        new_fields = realloc(p->fields, ( sizeof (my_rset_field_header) *
+                             ( p->fields_total + 1 ) ) );
+
+        /* FIXME: Bubble errors to lua. */
+        if (new_fields == NULL) {
+            perror("Growing fields array");
+            return 0;
+        }
+
+        p->fields = new_fields;
+        p->field_count = p->fields_total + 1;
+    }
+
+    p->fields_total++;
+
+    p->fields[p->fields_total].f   = *f;
+    p->fields[p->fields_total].ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
     return 0;
 }
 
 /* Pop field off of the end. Dereference the object and return it to lua? */
+/* TODO: Collapse from index? Remove specific field? */
 static int obj_rset_remove_field(lua_State *L, void *var, void *var2)
 {
+    my_rset_packet *p   = var2;
+
+    p->fields_total--;
+
     return 0;
 }
 
