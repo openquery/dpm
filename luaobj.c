@@ -223,7 +223,7 @@ static int obj_rset_field_count(lua_State *L, void *var, void *var2)
         }
 
         p->fields = new_fields;
-    } else if (p->fields) {
+    } else if (!p->fields) {
         p->fields = malloc( sizeof(my_rset_field_header) * new_count );
         /* FIXME: Propagate error to lua. */
         if (p->fields == NULL) {
@@ -254,7 +254,7 @@ static int obj_rset_add_field(lua_State *L, void *var, void *var2)
     /* field_count describes the size of the fields array... */
     if (p->field_count < p->fields_total + 1) {
         new_fields = realloc(p->fields, ( sizeof (my_rset_field_header) *
-                             ( p->fields_total + 1 ) ) );
+                             ( p->field_count + 1 ) ) );
 
         /* FIXME: Bubble errors to lua. */
         if (new_fields == NULL) {
@@ -266,10 +266,9 @@ static int obj_rset_add_field(lua_State *L, void *var, void *var2)
         p->field_count = p->fields_total + 1;
     }
 
-    p->fields_total++;
-
     p->fields[p->fields_total].f   = *f;
     p->fields[p->fields_total].ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    p->fields_total++;
 
     return 0;
 }
@@ -279,6 +278,12 @@ static int obj_rset_add_field(lua_State *L, void *var, void *var2)
 static int obj_rset_remove_field(lua_State *L, void *var, void *var2)
 {
     my_rset_packet *p   = var2;
+
+    if (p->fields_total == 0)
+        return 0;
+
+    if (p->fields[p->fields_total].f)
+        luaL_unref(L, LUA_REGISTRYINDEX, p->fields[p->fields_total].ref);
 
     p->fields_total--;
 
