@@ -295,6 +295,55 @@ static int obj_rset_remove_field(lua_State *L, void *var, void *var2)
  */
 static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
 {
+    my_rset_packet *p = var2;
+    luaL_Buffer b;
+    int nargs = lua_gettop(L);
+    int x;
+    int base;
+    char *tolua;
+    size_t len;
+    size_t plen = 0;
+
+    /* The top of the stack should be a row object to stuff data into. */
+    my_row_packet **row = luaL_checkudata(L, 2, "myp.row");
+
+    /* The rest should be the fields in the row. Make sure the number of args
+     * left == the fields_total.
+     */
+    if (p->field_count != nargs - 2)
+        return luaL_error(L, "Number of provided columns does not match the field number: %d", (int) p->field_count);
+
+    /* It doesn't matter what the fields were right now. They all end up as
+     * strings for the moment. We could handle floats or timestamps or blah
+     * specially, but not right now.
+     */
+    luaL_buffinit(L, &b);
+
+    for (x = 3; x != nargs; x++) {
+        /* Find how long a value is, and convert numerics to strings. */
+        lua_tolstring(L, x, &len);
+
+        /* func takes uchar */
+        /* Pack in the length of the data segment. */
+        tolua = luaL_prepbuffer(&b);
+        base = 0;
+
+        my_write_binary_field(tolua, &base, (uint64_t) len);
+        plen += len + base;
+        luaL_addsize(L, base);
+
+        /* Then we pull one of the arguments to the _top_ and pack that in. */
+        lua_pushvalue(L, x);
+        /* Appends string, pops value. */
+        luaL_addvalue(&b);
+    }
+
+    /* Complete the buffer, then store a reference to the final value. */
+    luaL_pushresult(&b);
+
+    (*row)->data    = luaL_ref(L, LUA_REGISTRYINDEX);
+    (*row)->datalen = plen;
+
     return 0;
 }
 
