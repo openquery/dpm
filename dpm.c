@@ -101,13 +101,13 @@ static void *my_consume_rset_packet(conn *c);
 static void my_free_rset_packet(void *pkt);
 static int my_wire_rset_packet(conn *c, void *pkt);
 
+static void *my_consume_row_packet(conn *c);
+static void my_free_row_packet(void *pkt);
+static int my_wire_row_packet(conn *c, void *pkt);
+
 static void *my_consume_field_packet(conn *c);
-static int my_consume_row_packet(conn *c);
 static void *my_consume_eof_packet(conn *c);
 
-static uint64_t my_read_binary_field(unsigned char *buf, int *base);
-static int my_size_binary_field(uint64_t length);
-static void my_write_binary_field(unsigned char *buf, int *base, uint64_t length);
 static uint8_t my_char_val(uint8_t X);
 static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len);
 static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2, uint len);
@@ -522,7 +522,7 @@ static void handle_event(int fd, short event, void *arg)
 /* MySQL Protocol support routines */
 
 /* Read a length encoded binary field into a uint64_t */
-static uint64_t my_read_binary_field(unsigned char *buf, int *base)
+uint64_t my_read_binary_field(unsigned char *buf, int *base)
 {
     uint64_t ret = 0;
 
@@ -555,7 +555,7 @@ static uint64_t my_read_binary_field(unsigned char *buf, int *base)
 }
 
 /* Same as above, but writes the binary field into buffer. */
-static void my_write_binary_field(unsigned char *buf, int *base, uint64_t length)
+void my_write_binary_field(unsigned char *buf, int *base, uint64_t length)
 {
     if (length < (uint64_t) 251) {
         *buf = length;
@@ -583,7 +583,7 @@ static void my_write_binary_field(unsigned char *buf, int *base, uint64_t length
 
 /* Returns the binary size of a field, for use in pre-allocating wire buffers
  */
-static int my_size_binary_field(uint64_t length)
+int my_size_binary_field(uint64_t length)
 {
     if (length < (uint64_t) 251) 
         return 1;
@@ -1622,24 +1622,87 @@ static void *my_consume_field_packet(conn *c)
     return p;
 }
 
-/* Placeholder */
-static int my_consume_row_packet(conn *c)
+void *my_new_row_packet()
 {
-    /* int base = c->readto + 4; */
-    /* FIXME: Do something with this crap. 
-    int i = 0;
+    my_row_packet *p;
 
-    for (i = 4; i < c->packetsize; i++) {
-        fprintf(stdout, "%x ", c->rbuf[c->readto + i]);
+    p = malloc( sizeof(my_row_packet) );
+    if (p == NULL) {
+        perror("Could not malloc()");
+        return NULL;
     }
-    fprintf(stdout, "\n");
-    for (i = 4; i < c->packetsize; i++) {
-        fprintf(stdout, "%c ", c->rbuf[c->readto + i]);
-    }
-    
-    fprintf(stdout, "\n");
+    memset(p, 0, sizeof(my_row_packet));
 
-    fprintf(stdout, "***PACKET*** parsed row packet.\n");*/
+    p->h.ptype   = myp_row;
+    p->h.free_me = my_free_row_packet;
+    p->h.to_buf  = my_wire_row_packet;
+
+    return p;
+}
+
+/* The free routine just needs to blow up the lua ref */
+static void my_free_row_packet(void *pkt)
+{
+    my_row_packet *p = pkt;
+    luaL_unref(L, LUA_REGISTRYINDEX, p->packed_row_lref);
+    free(p);
+}
+
+static void *my_consume_row_packet(conn *c)
+{
+    my_row_packet *p;
+    int base = c->readto + 4;
+
+    p = malloc( sizeof(my_row_packet) );
+    if (p == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_row_packet));
+
+    p->h.ptype   = myp_row;
+    p->h.free_me = my_free_row_packet;
+    p->h.to_buf  = my_wire_row_packet;
+
+    /* We manage this memory with a lua string reference.
+     * This should make it simpler to pass into lua later, and allows tricks
+     * when packing and unpacking the rows.
+     */
+    lua_pushlstring(L, (const char *) &c->rbuf[base], c->packetsize - 4);
+    p->packed_row_lref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    new_obj(L, p, "myp.row");
+
+    return p;
+}
+
+static int my_wire_row_packet(conn *c, void *pkt)
+{
+    my_row_packet *p = pkt;
+    int base         = c->towrite;
+
+    int psize   = 4;
+    size_t len  = 0;
+    const char *rdata;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, p->packed_row_lref);
+    rdata  = lua_tolstring(L, -1, &len);
+    psize += len - 1;
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1)
+        return -1;
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
+
+    memcpy(&c->wbuf[base], rdata, len);
+
+    lua_pop(L, 1);
+
     return 0;
 }
 

@@ -123,6 +123,12 @@ static const obj_reg field_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+/* Row packets are dumb, operated on by resultset objects. */
+/* FIXME: accessor for the raw packet data? For the insane. */
+static const obj_reg row_regs [] = {
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", packet_gc},
     {NULL, NULL},
@@ -136,6 +142,7 @@ static const obj_toreg regs [] = {
     {"myp.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
     {"myp.cmd", cmd_regs, generic_m, my_new_cmd_packet, "new_cmd_pkt"},
     {"myp.field", field_regs, generic_m, NULL, "new_field_pkt"},
+    {"myp.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -297,12 +304,11 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
 {
     my_rset_packet *p = var2;
     luaL_Buffer b;
-    int nargs = lua_gettop(L);
-    int x;
+    unsigned int nargs = lua_gettop(L);
+    unsigned int x;
     int base;
     char *tolua;
     size_t len;
-    size_t plen = 0;
 
     /* The top of the stack should be a row object to stuff data into. */
     my_row_packet **row = luaL_checkudata(L, 2, "myp.row");
@@ -328,9 +334,8 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
         tolua = luaL_prepbuffer(&b);
         base = 0;
 
-        my_write_binary_field(tolua, &base, (uint64_t) len);
-        plen += len + base;
-        luaL_addsize(L, base);
+        my_write_binary_field((unsigned char *) tolua, &base, (uint64_t) len);
+        luaL_addsize(&b, base);
 
         /* Then we pull one of the arguments to the _top_ and pack that in. */
         lua_pushvalue(L, x);
@@ -341,8 +346,7 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
     /* Complete the buffer, then store a reference to the final value. */
     luaL_pushresult(&b);
 
-    (*row)->data    = luaL_ref(L, LUA_REGISTRYINDEX);
-    (*row)->datalen = plen;
+    (*row)->packed_row_lref = luaL_ref(L, LUA_REGISTRYINDEX);
 
     return 0;
 }

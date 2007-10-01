@@ -373,6 +373,11 @@ typedef struct {
 } my_rset_packet;
 
 typedef struct {
+    my_packet_header h;
+    int     packed_row_lref; /* Lua reference to the packed row. */
+} my_row_packet;
+
+typedef struct {
     size_t  len;
     char    data[1];
 } cbuffer_t;
@@ -388,6 +393,12 @@ void *my_new_ok_packet();
 void *my_new_err_packet();
 void *my_new_cmd_packet();
 void *my_new_rset_packet();
+void *my_new_row_packet();
+
+/* MySQL protocol handlers other parts of the code needs. */
+uint64_t my_read_binary_field(unsigned char *buf, int *base);
+int my_size_binary_field(uint64_t length);
+void my_write_binary_field(unsigned char *buf, int *base, uint64_t length);
 
 /* Basic string buffering functions, which I can expand on later.
  */
