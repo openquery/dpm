@@ -1936,7 +1936,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 *ptype = myp_err;
                 break;
             default:
-                my_consume_row_packet(c);
+                consumer = my_consume_row_packet;
                 *ptype = myp_row;
                 break;
             }
