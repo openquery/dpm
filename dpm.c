@@ -1835,7 +1835,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             consumer = my_consume_auth_packet;
             *ptype = myp_auth;
             c->mypstate = myc_waiting;
-            nargs++;
             break;
         case myc_waiting:
             /* command packets must always be consumed. */
@@ -1854,7 +1853,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             consumer = my_consume_handshake_packet;
             *ptype = myp_handshake;
             c->mypstate = mys_wait_auth;
-            nargs++; /* The nargs++ is for the callback function */
             break;
         case mys_sending_ok:
             switch (field_count) {
@@ -1862,7 +1860,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 consumer = my_consume_ok_packet;
                 *ptype = myp_ok;
                 c->mypstate = mys_wait_cmd;
-                nargs++;
                 break;
             case 255:
                 *ptype = myp_err;
@@ -1878,7 +1875,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 consumer = my_consume_ok_packet;
                 *ptype = myp_ok;
                 c->mypstate = mys_wait_cmd;
-                nargs++;
                 break;
             case 255:
                 *ptype = myp_err;
@@ -1964,6 +1960,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
 
     if (consumer && ( c->next_call == -1 || c->next_call == c->mypstate )) {
         *p = consumer(c);
+        nargs++;
     }
 
     #ifdef DBUG
