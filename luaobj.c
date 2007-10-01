@@ -359,20 +359,56 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
  * Folks should use parse_as_array for speed. parse_as_table for convenience.
  */
 
-/* Figures if field is a string or numeric, leaves it on the stack. */
-static int _rset_parse_field(my_field_packet *f, unsigned char *buf)
+/* Should we define the magic value here? Boring. 0 is array, 1 is table. */
+static int _rset_parse_data(my_rset_packet *rset, int type)
 {
-    return 0;
+    my_row_packet **row   = luaL_checkudata(L, 2, "myp.row");
+    unsigned int i;
+    int base = 0;
+    const char *rdata;
+    size_t len;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, (*row)->packed_row_lref);
+    rdata = lua_tolstring(L, -1, NULL);
+
+    /* We can pre-allocate the table. */
+    if (type == 0) {
+        lua_createtable(L, rset->field_count, 0);
+    } else {
+        lua_createtable(L, 0, rset->field_count);
+    }
+
+    for (i = 0; i < rset->fields_total; i++) {
+        len = (size_t) my_read_binary_field((unsigned char *) rdata, &base);
+        rdata += base;
+
+        /* Push the index for the next value. */
+        if (type == 0) {
+            lua_pushinteger(L, i);
+        } else {
+            lua_pushlstring(L, (char *) rset->fields[i].f->name,
+                               (size_t) rset->fields[i].f->name_len);
+        }
+
+        /* Leaves the next value at the top of the stack. */
+        lua_pushlstring(L, (char *) rdata, len);
+        rdata += len;
+        /* Now collapse savely into the table. */
+        lua_settable(L, -3);
+    }
+
+    /* Return just the table to lua. */
+    return 1;
 }
 
 static int obj_rset_parse_row_array(lua_State *L, void *var, void *var2)
 {
-    return 0;
+    return _rset_parse_data(var2, 0);
 }
 
 static int obj_rset_parse_row_table(lua_State *L, void *var, void *var2)
 {
-    return 0;
+    return _rset_parse_data(var2, 1);
 }
 
 /* Storage of MySQL "dynamic length" variables */
