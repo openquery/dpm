@@ -2135,7 +2135,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     /* Finally, call the function? We should push some args too */
     if (lua_pcall(L, nargs, 1, 0) != 0) {
-        fprintf(stderr, "Error running callback function: %s\n", lua_tostring(L, -1));
+        fprintf(stderr, "Error running callback '%s': %s\n", my_state_name[c->mypstate], lua_tostring(L, -1));
         lua_pop(L, -1);
     }
 
