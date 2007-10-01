@@ -45,7 +45,8 @@ static int obj_rset_field_count(lua_State *L, void *var, void *var2);
 static int obj_rset_add_field(lua_State *L, void *var, void *var2);
 static int obj_rset_remove_field(lua_State *L, void *var, void *var2);
 static int obj_rset_pack_row(lua_State *L, void *var, void *var2);
-static int obj_rset_parse_row(lua_State *L, void *var, void *var2);
+static int obj_rset_parse_row_array(lua_State *L, void *var, void *var2);
+static int obj_rset_parse_row_table(lua_State *L, void *var, void *var2);
 
 /* Special field accessor. */
 static int obj_field_full(lua_State *L, void *var, void *var2);
@@ -110,7 +111,8 @@ static const obj_reg rset_regs [] = {
     {"add_field", obj_rset_add_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
     {"remove_field", obj_rset_remove_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
     {"pack_row", obj_rset_pack_row, LO_READONLY, offsetof(my_rset_packet, fields), 0},
-    {"parse_row", obj_rset_parse_row, LO_READONLY, offsetof(my_rset_packet, fields), 0},
+    {"parse_row_array", obj_rset_parse_row_array, LO_READONLY, offsetof(my_rset_packet, fields), 0},
+    {"parse_row_table", obj_rset_parse_row_table, LO_READONLY, offsetof(my_rset_packet, fields), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -354,8 +356,21 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
 /* Iterate over the associated fields to pull length encoded values out of a
  * row packet and into a lua table, return the table. Should attempt to store
  * numerics as numeric, strings as strings.
+ * Folks should use parse_as_array for speed. parse_as_table for convenience.
  */
-static int obj_rset_parse_row(lua_State *L, void *var, void *var2)
+
+/* Figures if field is a string or numeric, leaves it on the stack. */
+static int _rset_parse_field(my_field_packet *f, unsigned char *buf)
+{
+    return 0;
+}
+
+static int obj_rset_parse_row_array(lua_State *L, void *var, void *var2)
+{
+    return 0;
+}
+
+static int obj_rset_parse_row_table(lua_State *L, void *var, void *var2)
 {
     return 0;
 }
