@@ -365,11 +365,12 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
     my_row_packet **row   = luaL_checkudata(L, 2, "myp.row");
     unsigned int i;
     int base = 0;
-    const char *rdata;
+    const char *rdata, *end;
     size_t len;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, (*row)->packed_row_lref);
-    rdata = lua_tolstring(L, -1, NULL);
+    rdata = lua_tolstring(L, -1, &len);
+    end = rdata + (len - 1);
 
     /* We can pre-allocate the table. */
     if (type == 0) {
@@ -379,6 +380,9 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
     }
 
     for (i = 0; i < rset->fields_total; i++) {
+        if (rdata >= end)
+            return luaL_error(L, "There are more fields defined than row data!");
+
         len = (size_t) my_read_binary_field((unsigned char *) rdata, &base);
         rdata += base;
 
