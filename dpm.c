@@ -1492,6 +1492,8 @@ static void *my_consume_rset_packet(conn *c)
         return NULL;
     }
 
+    new_obj(L, p, "myp.rset");
+
     return p;
 }
 

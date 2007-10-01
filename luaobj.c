@@ -143,6 +143,7 @@ static const obj_toreg regs [] = {
     {"myp.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
     {"myp.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
     {"myp.cmd", cmd_regs, generic_m, my_new_cmd_packet, "new_cmd_pkt"},
+    {"myp.rset", rset_regs, generic_m, my_new_rset_packet, "new_rset_pkt"},
     {"myp.field", field_regs, generic_m, NULL, "new_field_pkt"},
     {"myp.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
