@@ -566,19 +566,20 @@ void my_write_binary_field(unsigned char *buf, int *base, uint64_t length)
     if (length < (uint64_t) 65536) {
         *buf++ = 252;
         int2store(buf, (uint16_t) length);
-        (*base)++;
+        (*base) += 2;
         return;
     }
 
     if (length < (uint64_t) 16777216) {
         *buf++ = 253;
         int3store(buf, (uint32_t) length);
-        (*base)++;
+        (*base) += 3;
         return;
     }
 
     *buf++ = 254;
     int8store(buf, length);
+    (*base) += 8;
 }
 
 /* Returns the binary size of a field, for use in pre-allocating wire buffers
