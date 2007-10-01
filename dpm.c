@@ -50,6 +50,8 @@ const char *my_state_name[]={
     "Server got error",
     "Closing",
     "Server sending stats",
+    "Server sent command",
+    "Server sending eof",
 };
 
 struct lua_State *L;
@@ -1871,7 +1873,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 assert(field_count == 0 || field_count == 255);
             }
             break;
-        case mys_sending_rset:
+        case mys_sent_cmd:
             switch (field_count) {
             case 0:
                 consumer = my_consume_ok_packet;
@@ -1884,9 +1886,15 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             default:
                 consumer = my_consume_rset_packet;
                 *ptype = myp_rset;
-                c->mypstate = mys_sending_fields;
+                c->mypstate = mys_sending_rset;
             }
             break;
+        case mys_sending_rset:
+            /* Should be a more clear way to do this...
+             * If we start at this transition, the rset was sent. Now we're
+             * doing fields.
+             */
+            c->mypstate = mys_sending_fields;
         case mys_sending_fields:
             switch (field_count) {
             case 254:
@@ -1899,7 +1907,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                  * case 'mys_wait_cmd', if it's really more complex than this.
                  */
                 if (c->last_cmd == COM_QUERY) {
-                    c->mypstate = mys_sending_rows;
+                    c->mypstate = mys_sent_fields;
                 } else {
                     c->mypstate = mys_wait_cmd;
                 }
@@ -1921,6 +1929,8 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *ptype = myp_stats;
             c->mypstate = mys_wait_cmd;
             break;
+        case mys_sent_fields:
+            c->mypstate = mys_sending_rows;
         case mys_sending_rows:
             switch (field_count) {
             case 254:
