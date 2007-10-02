@@ -371,7 +371,7 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, (*row)->packed_row_lref);
     rdata = lua_tolstring(L, -1, &len);
-    end = rdata + (len - 1);
+    end = rdata + len;
 
     /* We can pre-allocate the table. */
     if (type == 0) {
@@ -386,6 +386,7 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
 
         len = (size_t) my_read_binary_field((unsigned char *) rdata, &base);
         rdata += base;
+        base   = 0;
 
         /* Push the index for the next value. */
         if (type == 0) {
