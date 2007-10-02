@@ -110,9 +110,9 @@ static const obj_reg rset_regs [] = {
     {"field_count", obj_rset_field_count, LO_READWRITE, offsetof(my_rset_packet, field_count), 0},
     {"add_field", obj_rset_add_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
     {"remove_field", obj_rset_remove_field, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
-    {"pack_row", obj_rset_pack_row, LO_READONLY, offsetof(my_rset_packet, fields), 0},
-    {"parse_row_array", obj_rset_parse_row_array, LO_READONLY, offsetof(my_rset_packet, fields), 0},
-    {"parse_row_table", obj_rset_parse_row_table, LO_READONLY, offsetof(my_rset_packet, fields), 0},
+    {"pack_row", obj_rset_pack_row, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
+    {"parse_row_array", obj_rset_parse_row_array, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
+    {"parse_row_table", obj_rset_parse_row_table, LO_READWRITE, offsetof(my_rset_packet, fields), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -254,7 +254,7 @@ static int obj_rset_field_count(lua_State *L, void *var, void *var2)
  */
 static int obj_rset_add_field(lua_State *L, void *var, void *var2)
 {
-    my_field_packet **f = luaL_checkudata(L, 1, "myp.field");
+    my_field_packet **f = luaL_checkudata(L, 2, "myp.field");
     my_rset_packet *p   = var2;
     my_rset_field_header *new_fields;
 

@@ -221,9 +221,10 @@ enum myproto_states {
     mys_recv_err,
     my_closing,
     mys_sending_stats,
-    mys_sent_cmd, /* Server received command */
+    mys_got_cmd, /* Server received command */
     mys_sending_eof, /* The "data marker" at end of fields or end of rows. */
-    mys_sent_fields = 19,
+    mys_sent_rset,
+    mys_sent_fields,
 };
 
 enum my_types {

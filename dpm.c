@@ -50,8 +50,10 @@ const char *my_state_name[]={
     "Server got error",
     "Closing",
     "Server sending stats",
-    "Server sent command",
+    "Server got command",
     "Server sending eof",
+    "Server sent resultset",
+    "Server sent fields",
 };
 
 struct lua_State *L;
@@ -1781,25 +1783,8 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
             assert(ptype == myp_cmd);
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
-            c->last_cmd   = cmd->command;
-            switch (c->last_cmd) {
-            case COM_QUERY:
-                c->mypstate = mys_sending_rset;
-                break;
-            case COM_FIELD_LIST:
-                c->mypstate = mys_sending_fields;
-                break;
-            case COM_INIT_DB:
-            case COM_QUIT:
-                c->mypstate = mys_sending_ok;
-                break;
-            case COM_STATISTICS:
-                c->mypstate = mys_sending_stats;
-                break;
-            default:
-                fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
-                assert(1 == 0);
-            }
+            c->last_cmd = cmd->command;
+            c->mypstate = mys_got_cmd;
             }
             break;
         }
@@ -1852,6 +1837,43 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         }
         break;
     case MY_SERVER:
+        /* These are transition markers. The last of 'blah' was sent, so
+         * start parsing something else.
+         */
+        switch (c->mypstate) {
+            case mys_sent_rset:
+                c->mypstate = mys_sending_fields;
+                break;
+            case mys_sent_fields:
+                c->mypstate = mys_sending_rows;
+                break;
+        }
+
+        /* If we were just sent a command, flip the state depending on the
+         * command sent.
+         */
+        if (c->mypstate == mys_got_cmd) {
+            switch (c->last_cmd) {
+            case COM_QUERY:
+                c->mypstate = mys_sending_rset;
+                break;
+            case COM_FIELD_LIST:
+                c->mypstate = mys_sending_fields;
+                break;
+            case COM_INIT_DB:
+            case COM_QUIT:
+                c->mypstate = mys_sending_ok;
+                break;
+            case COM_STATISTICS:
+                c->mypstate = mys_sending_stats;
+                break;
+            default:
+                fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
+                assert(1 == 0);
+            }
+        }
+
+        /* Primary packet consumption. */
         switch (c->mypstate) {
         case mys_connect:
             consumer = my_consume_handshake_packet;
@@ -1873,7 +1895,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 assert(field_count == 0 || field_count == 255);
             }
             break;
-        case mys_sent_cmd:
+        case mys_sending_rset:
             switch (field_count) {
             case 0:
                 consumer = my_consume_ok_packet;
@@ -1886,31 +1908,25 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             default:
                 consumer = my_consume_rset_packet;
                 *ptype = myp_rset;
-                c->mypstate = mys_sending_rset;
+                c->mypstate = mys_sent_rset;
             }
             break;
-        case mys_sending_rset:
-            /* Should be a more clear way to do this...
-             * If we start at this transition, the rset was sent. Now we're
-             * doing fields.
-             */
-            c->mypstate = mys_sending_fields;
         case mys_sending_fields:
             switch (field_count) {
             case 254:
                 /* Grr. impossible to tell an EOF apart from a ROW or FIELD
                  * unless it's the right size to be an EOF as well */
                 if (c->packetsize < 10) {
-                my_consume_eof_packet(c);
-                *ptype = myp_eof;
-                /* Can change this to another switch, or cuddle a flag under
-                 * case 'mys_wait_cmd', if it's really more complex than this.
-                 */
-                if (c->last_cmd == COM_QUERY) {
-                    c->mypstate = mys_sent_fields;
-                } else {
-                    c->mypstate = mys_wait_cmd;
-                }
+                    my_consume_eof_packet(c);
+                    *ptype = myp_eof;
+                    /* Can change this to another switch, or cuddle a flag under
+                     * case 'mys_wait_cmd', if it's really more complex.
+                     */
+                    if (c->last_cmd == COM_QUERY) {
+                        c->mypstate = mys_sent_fields;
+                    } else {
+                        c->mypstate = mys_wait_cmd;
+                    }
                 break;
                 }
             case 255:
@@ -1929,8 +1945,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *ptype = myp_stats;
             c->mypstate = mys_wait_cmd;
             break;
-        case mys_sent_fields:
-            c->mypstate = mys_sending_rows;
         case mys_sending_rows:
             switch (field_count) {
             case 254:
