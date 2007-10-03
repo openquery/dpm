@@ -327,6 +327,7 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
      * specially, but not right now.
      */
     luaL_buffinit(L, &b);
+    nargs++;
 
     for (x = 3; x != nargs; x++) {
         /* Find how long a value is, and convert numerics to strings. */
