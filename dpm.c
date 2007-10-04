@@ -1694,7 +1694,7 @@ static int my_wire_row_packet(conn *c, void *pkt)
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, p->packed_row_lref);
     rdata  = lua_tolstring(L, -1, &len);
-    psize += len - 1;
+    psize += len;
 
     if (grow_write_buffer(c, c->towrite + psize) == -1)
         return -1;
