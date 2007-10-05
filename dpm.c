@@ -1831,7 +1831,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             *ptype = myp_cmd;
             c->mypstate = myc_sent_cmd;
             /* Kick off the packet sequencer. */
-            c->packet_seq = 0;
+            c->packet_seq = 1;
             nargs++;
             break;
         }
@@ -2064,6 +2064,8 @@ static int run_protocol(conn *c, int read, int written)
                  * packet. worth investigating?
                  */
                 memcpy(remote->wbuf + remote->towrite, c->rbuf + next_packet, c->packetsize);
+                /* We track our own sequence, so overwrite what's there. */
+                int1store(&remote->wbuf[remote->towrite + 3], remote->packet_seq - 1);
                 remote->towrite += c->packetsize;
             } else if ( c->remote && ( cbret == MYP_NOPROXY ) ) {
                 /* Condition to flush what was written, but don't proxy
