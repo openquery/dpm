@@ -1507,13 +1507,21 @@ static void *my_consume_rset_packet(conn *c)
 static int my_wire_rset_packet(conn *c, void *pkt)
 {
     my_rset_packet *p = (my_rset_packet *)pkt;
-    int base         = c->towrite;
+    int base          = c->towrite;
 
-    int psize = 4; /* misc chunks + header */
+    int psize = 4;
+    psize += my_size_binary_field(p->field_count);
 
     if (grow_write_buffer(c, c->towrite + psize) == -1) {
         return -1;
     }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
 
     my_write_binary_field(&c->wbuf[base], &base, p->field_count);
 
