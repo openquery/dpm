@@ -260,18 +260,28 @@ static void handle_close(conn *c)
 static int grow_write_buffer(conn *c, int newsize)
 {
     unsigned char *new_wbuf;
+
     if (c->wbufsize < newsize) {
+        /* Figure the next power of two using bit magic */
+        int nextsize = newsize - 1;
+        int i        = 1;
+        int intbits  = sizeof(nextsize) * 4;
+        for (; i != intbits; i *= 2) {
+           nextsize |= nextsize >> i; 
+        }
+        nextsize++;
+
         if (verbose)
-            fprintf(stdout, "Reallocating write buffer from %d to %d\n", c->wbufsize, c->wbufsize * 2);
-        new_wbuf = realloc(c->wbuf, c->wbufsize * 2);
+            fprintf(stdout, "Reallocating write buffer from %d to %d\n", c->wbufsize, nextsize);
+        new_wbuf = realloc(c->wbuf, nextsize);
 
         if (new_wbuf == NULL) {
             perror("Realloc output buffer");
             return -1;
         }
 
-        c->wbuf = new_wbuf;
-        c->wbufsize *= 2;
+        c->wbuf     = new_wbuf;
+        c->wbufsize = nextsize;
     }
 
     return 0;
