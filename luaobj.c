@@ -437,6 +437,7 @@ static int obj_lstring(lua_State *L, void *var, void *var2)
 
         const char *str = luaL_checklstring(L, 2, &len);
         free(*lstring);
+        len++;
         *lstring = (char *)malloc(len);
 
         if (*lstring == NULL) {
@@ -460,6 +461,7 @@ static int obj_string(lua_State *L, void *var, void *var2)
         size_t len = 0;
         unsigned int *maxlen = var2;
         const char *str = luaL_checklstring(L, 1, &len);
+        len++;
 
         /* FIXME: Everything should have a maximum. Remove this! */
         if (*maxlen != 0 && len > *maxlen) {
@@ -487,6 +489,7 @@ static int obj_pstring(lua_State *L, void *var, void *var2)
         size_t len = 0;
         const char *str = luaL_checklstring(L, 2, &len);
         free(*pstring);
+        len++;
         *pstring = (char *)malloc(len);
 
         if (*pstring == NULL) {
