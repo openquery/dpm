@@ -548,9 +548,7 @@ uint64_t my_read_binary_field(unsigned char *buf, int *base)
     (*base)++;
     switch (buf[*base]) {
         case 251:
-            /* FIXME: Handling NULL case correctly? */
-            (*base)++;
-            return (uint64_t) ~0;
+            return MYSQL_NULL;
         case 252:
             ret = uint2korr(&buf[*base]);
             (*base) += 2;

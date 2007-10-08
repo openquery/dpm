@@ -181,6 +181,9 @@ enum my_field_types {
 
 /* End defines from mysql_com.h */
 
+/* Defines which were not yanked. */
+#define MYSQL_NULL (uint64_t) ~0
+
 /* MySQL protocol states */
 enum myconn_states {
     my_waiting, /* Waiting for a new request to start */

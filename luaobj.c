@@ -368,7 +368,7 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
     unsigned int i;
     int base = 0;
     const char *rdata, *end;
-    size_t len;
+    uint64_t len;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, (*row)->packed_row_lref);
     rdata = lua_tolstring(L, -1, &len);
@@ -397,9 +397,14 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
                                (size_t) rset->fields[i].f->name_len);
         }
 
-        /* Leaves the next value at the top of the stack. */
-        lua_pushlstring(L, (char *) rdata, len);
-        rdata += len;
+        if (len == MYSQL_NULL) {
+            lua_pushnil(L);
+        } else { 
+            /* Leaves the next value at the top of the stack. */
+            lua_pushlstring(L, (char *) rdata, len);
+            rdata += len;
+        }
+
         /* Now collapse savely into the table. */
         lua_settable(L, -3);
     }
