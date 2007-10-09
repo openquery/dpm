@@ -110,6 +110,9 @@ static void my_free_row_packet(void *pkt);
 static int my_wire_row_packet(conn *c, void *pkt);
 
 static void *my_consume_field_packet(conn *c);
+static void my_free_field_packet(void *pkt);
+static int my_wire_field_packet(conn *c, void *pkt);
+
 static void *my_consume_eof_packet(conn *c);
 
 static uint8_t my_char_val(uint8_t X);
@@ -546,7 +549,7 @@ uint64_t my_read_binary_field(unsigned char *buf, int *base)
     }
 
     (*base)++;
-    switch (buf[*base]) {
+    switch (buf[*base - 1]) {
         case 251:
             return MYSQL_NULL;
         case 252:
@@ -589,6 +592,12 @@ void my_write_binary_field(unsigned char *buf, int *base, uint64_t length)
         return;
     }
 
+    if (length == MYSQL_NULL) {
+        *buf = 251;
+        (*base)++;
+        return;
+    }
+
     *buf++ = 254;
     int8store(buf, length);
     (*base) += 8;
@@ -606,6 +615,9 @@ int my_size_binary_field(uint64_t length)
 
     if (length < (uint64_t) 16777216)
         return 5;
+
+    if (length == MYSQL_NULL)
+        return 1;
 
     return 9;
 }
@@ -1536,6 +1548,34 @@ static int my_wire_rset_packet(conn *c, void *pkt)
     return 0;
 }
 
+void *my_new_field_packet()
+{
+    my_field_packet *p;
+
+    p = (my_field_packet *)malloc( sizeof(my_field_packet) );
+    if (p == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_field_packet));
+
+    p->h.ptype   = myp_field;
+    p->h.free_me = my_free_field_packet;
+    p->h.to_buf  = my_wire_field_packet;
+
+    p->fields = NULL;
+    p->charsetnr = 63;
+
+    return p;
+}
+
+static void my_free_field_packet(void *pkt)
+{
+    my_field_packet *p = pkt;
+    free(p->fields);
+    free(p);
+}
+
 static void *my_consume_field_packet(conn *c)
 {
     my_field_packet *p;
@@ -1551,8 +1591,9 @@ static void *my_consume_field_packet(conn *c)
     }
     memset(p, 0, sizeof(my_field_packet));
 
-    p->h.ptype = myp_field;
-    /* FIXME: add free and store handlers */
+    p->h.ptype   = myp_field;
+    p->h.free_me = my_free_field_packet;
+    p->h.to_buf  = my_wire_field_packet;
 
     /* This packet type has a ton of dynamic length fields.
      * What we're going to do instead of 6 mallocs is use an offset table
@@ -1638,11 +1679,99 @@ static void *my_consume_field_packet(conn *c)
      * NULL value, and thus no data? Complex corner case, fix later. */
     if (c->packetsize > (base - c->readto)) {
         p->my_default = my_read_binary_field(c->rbuf, &base);
+        p->has_default++;
     }
 
     new_obj(L, p, "myp.field");
 
     return p;
+}
+
+static int my_wire_field_packet(conn *c, void *pkt)
+{
+    my_field_packet *p = pkt;
+    int base           = c->towrite;
+
+    int psize = 4;
+
+    psize += p->catalog_len + p->db_len + p->table_len + p->org_table_len +
+             p->name_len + p->org_name_len + 13;
+
+    psize += my_size_binary_field(p->catalog_len);
+    psize += my_size_binary_field(p->db_len);
+    psize += my_size_binary_field(p->table_len);
+    psize += my_size_binary_field(p->org_table_len);
+    psize += my_size_binary_field(p->name_len);
+    psize += my_size_binary_field(p->org_name_len);
+
+    /* MySQL doesn't seem to mind if this is missing, but:
+     * FIXME: Make the default value work.
+     */
+    /* if (p->has_default)
+        psize += my_size_binary_field(p->my_default);*/
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->catalog_len);
+    memcpy(&c->wbuf[base], p->catalog, p->catalog_len);
+    base += p->catalog_len;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->db_len);
+    memcpy(&c->wbuf[base], p->db, p->db_len);
+    base += p->db_len;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->table_len);
+    memcpy(&c->wbuf[base], p->table, p->table_len);
+    base += p->table_len;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->org_table_len);
+    memcpy(&c->wbuf[base], p->org_table, p->org_table_len);
+    base += p->org_table_len;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->name_len);
+    memcpy(&c->wbuf[base], p->name, p->name_len);
+    base += p->name_len;
+
+    my_write_binary_field(&c->wbuf[base], &base, p->org_name_len);
+    memcpy(&c->wbuf[base], p->org_name, p->org_name_len);
+    base += p->org_name_len;
+
+    /* Filler? */
+    c->wbuf[base] = 12;
+    base++;
+
+    int2store(&c->wbuf[base], p->charsetnr);
+    base += 2;
+
+    int4store(&c->wbuf[base], p->length);
+    base += 4;
+
+    c->wbuf[base] = p->type;
+    base++;
+
+    int2store(&c->wbuf[base], p->flags);
+    base += 2;
+
+    c->wbuf[base] = p->decimals;
+    base++;
+
+    int2store(&c->wbuf[base], 0);
+    base += 2;
+
+    /*if (p->has_default)
+        my_write_binary_field(&c->wbuf[base], &base, p->my_default);
+        */
+
+    return psize;
 }
 
 void *my_new_row_packet()

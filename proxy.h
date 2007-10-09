@@ -358,6 +358,7 @@ typedef struct {
     uint8_t        decimals;
     uint16_t       filler2;
     uint64_t       my_default;
+    uint8_t        has_default;
 } my_field_packet;
 
 typedef struct {
@@ -400,6 +401,7 @@ void *my_new_ok_packet();
 void *my_new_err_packet();
 void *my_new_cmd_packet();
 void *my_new_rset_packet();
+void *my_new_field_packet();
 void *my_new_row_packet();
 
 /* MySQL protocol handlers other parts of the code needs. */
