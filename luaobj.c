@@ -151,19 +151,12 @@ static const obj_toreg regs [] = {
 
 static int packet_gc(lua_State *L)
 {
-    my_packet_fuzz *p;
-    void **tmp;
-
-    /* FIXME: Have to stop writing code like this. What's the real way to do
-     * it?
-     */
-    tmp = (void **)lua_touserdata(L, 1);
-    p = *tmp;
+    my_packet_fuzz **p;
+    p = lua_touserdata(L, 1);
 
     /* This frees itself. Ensure there are no leaks with valgrind! */
-    if (p->h.free_me) {
-        p->h.free_me(p);
-    }
+    if ((*p)->h.free_me)
+        (*p)->h.free_me(*p);
 
     return 0;
 }
