@@ -1563,8 +1563,12 @@ void *my_new_field_packet()
     p->h.free_me = my_free_field_packet;
     p->h.to_buf  = my_wire_field_packet;
 
-    p->fields = NULL;
+    p->fields    = NULL;
+
+    /* BS some defaults. */
     p->charsetnr = 63;
+    p->length    = 32;
+    p->flags     = PRI_KEY_FLAG;
 
     return p;
 }
