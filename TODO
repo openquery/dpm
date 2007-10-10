@@ -1,11 +1,6 @@
 Blockers for release-3:
 
-- ability to fully modify, luaize, and return custom query resultsets
-  - real parsing/objects for field packets
-  - real parsing/objects for row packets
-  - eof/etc
-  - any lua related issues here?
-- Pass internal defines up into lua from within the C program, if possible.
+- func to find conn attached to a conn
 - report "real" thread back to client during connect? Or rewrite when
   necessary.
 - need a "verify" conn obj method that barfs if client conn was closed
@@ -22,7 +17,6 @@ Blockers for release-4:
 - support at least COM_CHANGE_USER, COM_PING
 - cleaner lua, more demos or libraries.
 - start test package (perl TAP? Probably).
-- should be able to handle resultset packets? Roadmap it at least.
 
 Blockers for release-5:
 
@@ -42,6 +36,8 @@ needs make-foo at some point. I tried, too lazy.
 non-parsing proxy mode to support a list of modes? any bugs?
 parsing code for COM_STATISTICS
 
+DONE ### ability to fully modify, luaize, and return custom query resultsets
+DONE ### Pass internal defines up into lua from within the C program, if possible.
 DONE ### support the COM_STATISTICS result packet, so \s works.
 DONE ### Non-parsing "proxy" mode (optional)
 DONE ### (start to) write packet-free routines. Clean up the memory leak I
