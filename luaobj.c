@@ -50,6 +50,7 @@ static int obj_rset_parse_row_table(lua_State *L, void *var, void *var2);
 
 /* Special field accessor. */
 static int obj_field_full(lua_State *L, void *var, void *var2);
+static int obj_field_name(lua_State *L, void *var, void *var2);
 
 static const obj_reg conn_regs [] = {
     {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id), 0},
@@ -121,6 +122,7 @@ static const obj_reg rset_regs [] = {
  * of efficiency (for now) the dynamic part of the packet is only rewriteable.
  */
 static const obj_reg field_regs [] = {
+    {"name", obj_field_name, LO_READWRITE, 0, 0},
     {"full", obj_field_full, LO_READWRITE, 0, 0},
     {NULL, NULL, 0, 0, 0},
 };
@@ -176,6 +178,58 @@ void dump_stack()
 /* Stub for field full (re)write accessor. */
 static int obj_field_full(lua_State *L, void *var, void *var2)
 {
+    return 0;
+}
+
+/* Poorly named minimal accessor for field sets. Set the name and type fields.
+ */
+static int obj_field_name(lua_State *L, void *var, void *var2)
+{
+    my_field_packet *p = var2;
+    const char *fname;
+    size_t len;
+
+    if (lua_gettop(L) < 2 && p->fields) {
+        lua_pushlstring(L, (const char *) p->name, p->name_len);
+        lua_pushinteger(L, p->type);
+        return 2;
+    }
+
+    /* Pull in a string field, then an integer field if there're enough args.
+     * size p->fields to the length of the 'name' field plus enough space to
+     * null out the rest of the fields.
+     * I guess only 'type' needs to be changed, otherwise.
+     */
+
+    fname = lua_tolstring(L, 2, &len);
+
+    /* Of course, we have to completely wipe what's there. */
+    if (p->fields)
+        free(p->fields);
+
+    p->fields = malloc( len + 16 ); /* Too lazy to count it out. */
+    if (p->fields == NULL)
+        luaL_error(L, "Failed to allocate memory for field packet");
+
+    p->catalog_len = 3;
+    p->catalog     = p->fields;
+    strcpy((char *) p->catalog, "def");
+
+    p->db_len        = 0;
+    p->table_len     = 0;
+    p->org_table_len = 0;
+    p->org_name_len  = 0;
+
+    p->name_len      = len;
+    p->name          = p->fields + 3;
+    memcpy(p->name, fname, len);
+
+    if (lua_type(L, 3) != LUA_TNONE) {
+        p->type = lua_tointeger(L, 3);
+    } else {
+        p->type = MYSQL_TYPE_STRING;
+    }
+
     return 0;
 }
 

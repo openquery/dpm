@@ -1749,7 +1749,8 @@ static int my_wire_field_packet(conn *c, void *pkt)
     memcpy(&c->wbuf[base], p->org_name, p->org_name_len);
     base += p->org_name_len;
 
-    /* Filler? */
+    /* Filler. Size of rest of data.
+     * FIXME: look if this is used in mysql. */
     c->wbuf[base] = 12;
     base++;
 
