@@ -114,6 +114,8 @@ static void my_free_field_packet(void *pkt);
 static int my_wire_field_packet(conn *c, void *pkt);
 
 static void *my_consume_eof_packet(conn *c);
+static void my_free_eof_packet(void *pkt);
+static int my_wire_eof_packet(conn *c, void *pkt);
 
 static uint8_t my_char_val(uint8_t X);
 static void my_hex2octet(uint8_t *dst, const char *src, unsigned int len);
@@ -1776,7 +1778,7 @@ static int my_wire_field_packet(conn *c, void *pkt)
         my_write_binary_field(&c->wbuf[base], &base, p->my_default);
         */
 
-    return psize;
+    return 0;
 }
 
 void *my_new_row_packet()
@@ -1863,33 +1865,89 @@ static int my_wire_row_packet(conn *c, void *pkt)
     return 0;
 }
 
-/* Placeholder */
+static int my_wire_eof_packet(conn *c, void *pkt)
+{
+    my_eof_packet *p = pkt;
+    int base = c->towrite;
+    
+    int psize = 9; /* Packet is a static length. */
+
+    if (grow_write_buffer(c, c->towrite + psize) == -1) {
+        return -1;
+    }
+
+    c->towrite += psize;
+
+    int3store(&c->wbuf[base], psize - 4);
+    base += 3;
+    int1store(&c->wbuf[base], c->packet_seq);
+    base++;
+
+    c->wbuf[base] = 254; /* This + len signifies eof packet. */
+    base++;
+
+    int2store(&c->wbuf[base], p->warning_count);
+    base += 2;
+
+    int2store(&c->wbuf[base], p->server_status);
+
+    return 0;
+}
+
+/* FIXME: Where do warnings come in, and how? */
 static void *my_consume_eof_packet(conn *c)
 {
     my_eof_packet *p;
     int base = c->readto + 4;
  
     /* Clear out the struct. */
-    p = (my_eof_packet *)malloc( sizeof(my_eof_packet) );
+    p = malloc( sizeof(my_eof_packet) );
     if (p == NULL) {
         perror("Could not malloc()");
         return NULL;
     }
     memset(p, 0, sizeof(my_eof_packet));
 
-    p->h.ptype = myp_eof;
-    /* FIXME: add free and store handlers */
+    p->h.ptype   = myp_eof;
+    p->h.free_me = my_free_eof_packet;
+    p->h.to_buf  = my_wire_eof_packet;
 
     /* Skip field_count, is always 0xFE */
     base++;
 
-    memcpy(&p->warning_count, &c->rbuf[base], 2);
+    p->warning_count = uint2korr(&c->rbuf[base]);
     base += 2;
 
-    memcpy(&p->status_flags, &c->rbuf[base], 2);
+    p->server_status= uint2korr(&c->rbuf[base]);
     base += 2;
 
-    return 0;
+    new_obj(L, p, "myp.eof");
+
+    return p;
+}
+
+void *my_new_eof_packet()
+{
+    my_eof_packet *p;
+
+    p = malloc( sizeof(my_eof_packet) );
+    if (p == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(p, 0, sizeof(my_eof_packet));
+
+    p->h.ptype   = myp_eof;
+    p->h.free_me = my_free_eof_packet;
+    p->h.to_buf  = my_wire_eof_packet;
+
+    return p;
+}
+
+static void my_free_eof_packet(void *pkt)
+{
+    my_eof_packet *p = pkt;
+    free(p);
 }
 
 /* Can't send a packet unless we know what it is.
@@ -2067,7 +2125,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 /* Grr. impossible to tell an EOF apart from a ROW or FIELD
                  * unless it's the right size to be an EOF as well */
                 if (c->packetsize < 10) {
-                    my_consume_eof_packet(c);
+                    consumer = my_consume_eof_packet;
                     *ptype = myp_eof;
                     /* Can change this to another switch, or cuddle a flag under
                      * case 'mys_wait_cmd', if it's really more complex.
@@ -2099,7 +2157,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             switch (field_count) {
             case 254:
                 if (c->packetsize < 10) {
-                my_consume_eof_packet(c);
+                consumer = my_consume_eof_packet;
                 *ptype = myp_eof;
                 c->mypstate = mys_wait_cmd;
                 break;

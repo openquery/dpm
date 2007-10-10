@@ -364,7 +364,7 @@ typedef struct {
 typedef struct {
     my_packet_header h;
     uint16_t    warning_count;
-    uint16_t    status_flags;
+    uint16_t    server_status;
 } my_eof_packet;
 
 typedef struct {
@@ -403,6 +403,7 @@ void *my_new_cmd_packet();
 void *my_new_rset_packet();
 void *my_new_field_packet();
 void *my_new_row_packet();
+void *my_new_eof_packet();
 
 /* MySQL protocol handlers other parts of the code needs. */
 uint64_t my_read_binary_field(unsigned char *buf, int *base);

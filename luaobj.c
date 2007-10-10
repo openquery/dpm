@@ -133,6 +133,12 @@ static const obj_reg row_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+static const obj_reg eof_regs [] = {
+    {"warning_count", obj_uint16_t, LO_READWRITE, offsetof(my_eof_packet, warning_count), 0},
+    {"server_status", obj_flags, LO_READWRITE, offsetof(my_eof_packet, server_status), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", packet_gc},
     {NULL, NULL},
@@ -148,6 +154,7 @@ static const obj_toreg regs [] = {
     {"myp.rset", rset_regs, generic_m, my_new_rset_packet, "new_rset_pkt"},
     {"myp.field", field_regs, generic_m, my_new_field_packet, "new_field_pkt"},
     {"myp.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
+    {"myp.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -555,6 +562,7 @@ static int obj_pstring(lua_State *L, void *var, void *var2)
  * If one arg, returns flag val. If two arg, sets flag to a boolean of second
  * arg.
  * FIXME: Untested
+ * Arguments are all 16-bit, but tihs uses 'int'!
  */
 static int obj_flags(lua_State *L, void *var, void *var2)
 {
