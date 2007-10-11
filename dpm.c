@@ -2469,22 +2469,20 @@ static int proxy_disconnect(lua_State *L)
 /* LUA command for wiring a packet into a connection. */
 static int wire_packet(lua_State *L)
 {
-    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
-    my_packet_fuzz *p;
-    void **tmp;
+    conn **c = luaL_checkudata(L, 1, "myp.conn");
+    my_packet_fuzz **p;
 
     luaL_checktype(L, 2, LUA_TUSERDATA);
 
-    tmp = (void **)lua_touserdata(L, 2);
-    p = *tmp;
+    p = lua_touserdata(L, 2);
 
-    p->h.to_buf(*c, *tmp);
+    (*p)->h.to_buf(*c, *p);
     if (verbose)
-        fprintf(stdout, "Wrote packet of type [%d] to sock [%llu] with server type [%d]\n", p->h.ptype, (unsigned long long)(*c)->id, (*c)->my_type);
+        fprintf(stdout, "Wrote packet of type [%d] to sock [%llu] with server type [%d]\n", (*p)->h.ptype, (unsigned long long)(*c)->id, (*c)->my_type);
 
     /* FIXME: sent_packet doesn't need the field count at all? */
     lua_settop(L, 0);
-    sent_packet(*c, tmp, p->h.ptype, 0);
+    sent_packet(*c, (void **) p, (*p)->h.ptype, 0);
 
     return 0;
 }
