@@ -258,7 +258,7 @@ static void handle_close(conn *c)
         fprintf(stdout, "Closed connection for %llu\n", (unsigned long long) c->id);
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
-    free(c);
+    c->alive = 0;
 }
 
 /* Generic "Grow my write buffer" function. */
@@ -470,31 +470,12 @@ static void handle_event(int fd, short event, void *arg)
         setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
         newc = init_conn(newfd);
 
-        if (newc == NULL) {
+        if (newc == NULL)
             return;
-        }
-
-        #ifdef __NULLED_CODE
-        /* For every incoming socket, lets create a backend sock. */
-        newback = test_outbound();
-
-        /* If we couldn't get a backend, we must close the client. */
-        if (newback == NULL) {
-            handle_close(newc);
-            return;
-        }
-
-        newc->remote = (struct conn *)newback;
-
-        /* Weird association. Makes sure the backend can get back to us
-         * clients.
-         * FIXME: This'll need cleaning up code.
-         */
-        newback->remote = (struct conn *)newc;
-        #endif
 
         newc->mypstate  = myc_wait_handshake;
         newc->my_type   = MY_CLIENT;
+        newc->alive++;
 
         /* Pass the object up into lua for later inspection. */
         new_obj(L, newc, "myp.conn");
@@ -2436,10 +2417,10 @@ static int proxy_connect(lua_State *L)
     conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
     conn **r = (conn **)luaL_checkudata(L, 2, "myp.conn");
 
-    if ((*c)->my_type != MY_CLIENT) {
+    if ((*c)->my_type != MY_CLIENT || (*c)->alive == 0) {
         luaL_error(L, "Arg 1 must be a valid client");
     }
-    if ((*r)->my_type != MY_SERVER) {
+    if ((*r)->my_type != MY_SERVER || (*c)->alive == 0) {
         luaL_error(L, "Arg 2 must be a valid backend");
     }
 
@@ -2471,6 +2452,9 @@ static int wire_packet(lua_State *L)
 {
     conn **c = luaL_checkudata(L, 1, "myp.conn");
     my_packet_fuzz **p;
+
+    if (!(*c)->alive)
+        luaL_error(L, "Cannot write to invalid connection");
 
     luaL_checktype(L, 2, LUA_TUSERDATA);
 
@@ -2521,6 +2505,7 @@ static int new_connect(lua_State *L)
     /* Special state for outbound requests. */
     c->mystate = my_connect;
     c->my_type = MY_SERVER;
+    c->alive++;
 
     /* We watch for a write to this guy to see if it succeeds */
     add_conn_event(c, EV_WRITE);
@@ -2570,6 +2555,7 @@ static int new_listener(lua_State *L)
     listener->ev_flags = EV_READ | EV_PERSIST;
 
     listener->listener++;
+    listener->alive++;
 
     event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
     event_add(&listener->ev, NULL);

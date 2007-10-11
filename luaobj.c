@@ -22,6 +22,7 @@
 #include "luaobj.h"
 
 /* Forward declarations */
+static int conn_gc(lua_State *L);
 static int packet_gc(lua_State *L);
 
 static int  obj_index(lua_State *L);
@@ -144,8 +145,13 @@ static const luaL_Reg generic_m [] = {
     {NULL, NULL},
 };
 
+static const luaL_Reg conn_m [] = {
+    {"__gc", conn_gc},
+    {NULL, NULL},
+};
+
 static const obj_toreg regs [] = {
-    {"myp.conn", conn_regs, generic_m, NULL, NULL},
+    {"myp.conn", conn_regs, conn_m, NULL, NULL},
     {"myp.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
     {"myp.auth", auth_regs, generic_m, my_new_auth_packet, "new_auth_pkt"},
     {"myp.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
@@ -157,6 +163,17 @@ static const obj_toreg regs [] = {
     {"myp.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
     {NULL, NULL, NULL, NULL, NULL},
 };
+
+/* Nothing special for now. This ensures we don't segfault when calling the
+ * packet gc on a connection obj.
+ */
+static int conn_gc(lua_State *L)
+{
+    conn **c;
+    free(*c);
+
+    return 0;
+}
 
 static int packet_gc(lua_State *L)
 {
