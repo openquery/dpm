@@ -1,27 +1,27 @@
 Blockers for release-3:
 
 - func to find conn attached to a conn
-- report "real" thread back to client during connect? Or rewrite when
-  necessary.
-- need a "verify" conn obj method that barfs if client conn was closed
 - don't allow connecting a backend if the conn is invalid
+- don't allow wiring to a connection if it's closed
 - better mechanism for detecting closed conn?
 - learn to handle large mysql packets (at least identify them, and bomb saying
   they're not supported)
 
 Blockers for release-4:
 
+- new faster callback registration
+- more demos/libraries that make use of the new callback setup.
+- Find out how to insert 'array' elements into a table. pushinteger appears to
+  be using nrec elements in a table (see luaobj.c:_rset_parse_data)
 - standard lua modules: 1) backend connect 2) client accept 3) passthrough
-- func find the id of an attached remote for a connection object in lua.
 - pick one code style to clean up, and clean it.
-- support at least COM_CHANGE_USER, COM_PING
-- cleaner lua, more demos or libraries.
 - start test package (perl TAP? Probably).
 
 Blockers for release-5:
 
-- port to at least one other OS (OpenBSD?)
-- at least two more packet types
+- support at least COM_CHANGE_USER, COM_PING
+- port to at least one other OS
+- test and use the luaobj 'flag' accessors
 - TBD
 
 WORK # write helper routines to serialize/deserialize length coded binaries
