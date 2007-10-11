@@ -404,6 +404,9 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
     /* Complete the buffer, then store a reference to the final value. */
     luaL_pushresult(&b);
 
+    if ((*row)->packed_row_lref)
+        luaL_unref(L, LUA_REGISTRYINDEX, (*row)->packed_row_lref);
+
     (*row)->packed_row_lref = luaL_ref(L, LUA_REGISTRYINDEX);
 
     return 0;
