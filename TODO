@@ -1,28 +1,26 @@
-Blockers for release-3:
-
-- func to find conn attached to a conn
-- don't allow connecting a backend if the conn is invalid
-- don't allow wiring to a connection if it's closed
-- better mechanism for detecting closed conn?
-- learn to handle large mysql packets (at least identify them, and bomb saying
-  they're not supported)
-
 Blockers for release-4:
 
 - new faster callback registration
+- func to find conn attached to a conn
+- learn to handle large mysql packets (at least identify them, and bomb saying
+  they're not supported)
 - more demos/libraries that make use of the new callback setup.
 - Find out how to insert 'array' elements into a table. pushinteger appears to
   be using nrec elements in a table (see luaobj.c:_rset_parse_data)
 - standard lua modules: 1) backend connect 2) client accept 3) passthrough
-- pick one code style to clean up, and clean it.
-- start test package (perl TAP? Probably).
 
 Blockers for release-5:
 
+- pick one code style to clean up, and clean it.
 - support at least COM_CHANGE_USER, COM_PING
-- port to at least one other OS
 - test and use the luaobj 'flag' accessors
-- TBD
+- start test package (perl TAP? Probably).
+
+Blockers for release-6:
+
+- port to at least one other OS
+- support UDP sockets
+- support listening on INADDR_ANY
 
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
@@ -36,6 +34,7 @@ needs make-foo at some point. I tried, too lazy.
 non-parsing proxy mode to support a list of modes? any bugs?
 parsing code for COM_STATISTICS
 
+DONE ### better mechanism for detecting closed conn?
 DONE ### ability to fully modify, luaize, and return custom query resultsets
 DONE ### Pass internal defines up into lua from within the C program, if possible.
 DONE ### support the COM_STATISTICS result packet, so \s works.
