@@ -64,7 +64,7 @@ static const obj_reg handshake_regs [] = {
     {"protocol_version", obj_uint8_t, LO_READWRITE, offsetof(my_handshake_packet, protocol_version), 0},
     {"server_version", obj_string, LO_READONLY, offsetof(my_handshake_packet, server_version), 0},
     {"thread_id", obj_uint32_t, LO_READWRITE, offsetof(my_handshake_packet, thread_id), 0},
-    {"scramble_buff", obj_string, LO_READONLY, offsetof(my_handshake_packet, scramble_buff), 0},
+    {"scramble_buff", obj_string, LO_READONLY, offsetof(my_handshake_packet, scramble_buff), 20},
     {"server_capabilities", obj_flags, LO_READWRITE, offsetof(my_handshake_packet, server_capabilities), 0},
     {"server_language", obj_uint8_t, LO_READWRITE, offsetof(my_handshake_packet, server_language), 0},
     {"server_status", obj_flags, LO_READWRITE, offsetof(my_handshake_packet, server_status), 0},
@@ -75,7 +75,7 @@ static const obj_reg auth_regs [] = {
     {"client_flags", obj_flags, LO_READWRITE, offsetof(my_auth_packet, client_flags), 0},
     {"max_packet_size", obj_uint32_t, LO_READWRITE, offsetof(my_auth_packet, max_packet_size), 0},
     {"charset_number", obj_uint8_t, LO_READWRITE, offsetof(my_auth_packet, charset_number), 0},
-    {"user", obj_string, LO_READWRITE, offsetof(my_auth_packet, user), 0},
+    {"user", obj_string, LO_READWRITE, offsetof(my_auth_packet, user), 15},
     {"databasename", obj_string, LO_READWRITE, offsetof(my_auth_packet, databasename), 0},
     {NULL, NULL, 0, 0, 0},
 };
@@ -93,8 +93,8 @@ static const obj_reg ok_regs [] = {
 static const obj_reg err_regs [] = {
     {"field_count", obj_uint8_t, LO_READONLY, offsetof(my_err_packet, field_count), 0},
     {"errnum", obj_uint16_t, LO_READWRITE, offsetof(my_err_packet, errnum), 0},
-    {"sqlstate", obj_string, LO_READWRITE, offsetof(my_err_packet, sqlstate), 0},
-    {"message", obj_string, LO_READWRITE, offsetof(my_err_packet, message), 0},
+    {"sqlstate", obj_string, LO_READWRITE, offsetof(my_err_packet, sqlstate), 5},
+    {"message", obj_string, LO_READWRITE, offsetof(my_err_packet, message), 511},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -534,7 +534,7 @@ static int obj_string(lua_State *L, void *var, void *var2)
     } else {
         size_t len = 0;
         unsigned int *maxlen = var2;
-        const char *str = luaL_checklstring(L, 1, &len);
+        const char *str = luaL_checklstring(L, 2, &len);
         len++;
 
         /* FIXME: Everything should have a maximum. Remove this! */

@@ -28,6 +28,8 @@ clients  = {}
 storage  = {}
 
 passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
+BACKEND_USERNAME = "happy"
+BACKEND_PASSWORD = "wheefun"
 
 function client_ok(cid)
     print("Client ready! id: " .. cid)
@@ -114,6 +116,8 @@ function server_handshake(hs_pkt, cid)
     print("Got handshake from server, sending auth")
 
     local auth_pkt = myp.new_auth_pkt()
+    auth_pkt:user(BACKEND_USERNAME)
+    myp.crypt_pass(auth_pkt, hs_pkt, BACKEND_PASSWORD)
 
     myp.wire_packet(backend, auth_pkt)
     -- Don't need to store anything, server will return 'ok' or 'err' packet.
@@ -126,7 +130,10 @@ function new_backend(cid)
     print "Creating new backend..."
     -- This function is overloaded slightly.
     -- If we were passed a cid, remove it from callbacks table (dead conn)
-    callback[cid] = nil
+    if cid ~= 0 then
+        print "Backend died! Could not authenticate or connect!"
+        callback[cid] = nil
+    end
 
     -- Then create new connection.
     backend = myp.connect("127.0.0.1", 3306)
