@@ -1,5 +1,6 @@
 Blockers for release-4:
 
+- handle remote end death in blind proxying
 - new faster callback registration
 - func to find conn attached to a conn
 - learn to handle large mysql packets (at least identify them, and bomb saying
