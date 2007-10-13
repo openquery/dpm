@@ -25,8 +25,11 @@ backends = {}
 
 -- Client just got lost. Wipe callbacks, client table.
 function client_closing(cid)
+    print "Client died"
     clients[cid] = nil
     callback[cid] = nil
+    -- Disconnect the backend conn from mysql.
+    myp.close(backends[cid])
     backends[cid] = nil
 end
 

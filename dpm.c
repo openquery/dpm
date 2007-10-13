@@ -126,6 +126,7 @@ static int my_check_scramble(const char *remote_scram, const char *random, const
 /* Lua related forward declarations. */
 static int new_listener(lua_State *L);
 static int new_connect(lua_State *L);
+static int close_conn(lua_State *L);
 static int check_pass(lua_State *L);
 static int crypt_pass(lua_State *L);
 static int wire_packet(lua_State *L);
@@ -2379,6 +2380,24 @@ static int proxy_until(lua_State *L)
     return 0;
 }
 
+/* LUA command to kick off a close of a conn object.
+ * Will spew error if conn is already closed.
+ */
+static int close_conn(lua_State *L)
+{
+    conn **c = luaL_checkudata(L, 1, "myp.conn");
+    lua_pop(L, 1);
+
+    if ((*c)->alive == 0) {
+        lua_pushnil(L);
+    } else {
+        handle_close(*c);
+        lua_pushinteger(L, 1);
+    }
+
+    return 1;
+}
+
 /* LUA command for verifying a password hash.
  * Takes: Auth packet, handshake packet, password hash (sha1(sha1(plaintext)))
  * returns 0 if they match up.
@@ -2571,6 +2590,7 @@ int main (int argc, char **argv)
     static const struct luaL_Reg myp [] = {
         {"listener", new_listener},
         {"connect", new_connect},
+        {"close", close_conn},
         {"wire_packet", wire_packet},
         {"check_pass", check_pass},
         {"crypt_pass", crypt_pass},
