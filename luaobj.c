@@ -55,6 +55,7 @@ static int obj_field_name(lua_State *L, void *var, void *var2);
 
 static const obj_reg conn_regs [] = {
     {"id", obj_uint64_t, LO_READONLY, offsetof(conn, id), 0},
+    {"remote_id", obj_uint64_t, LO_READONLY, offsetof(conn, remote_id), 0},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
     {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type), 0},
     {NULL, NULL, 0, 0, 0},

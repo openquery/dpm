@@ -2443,8 +2443,10 @@ static int proxy_connect(lua_State *L)
         luaL_error(L, "Arg 2 must be a valid backend");
     }
 
-    (*c)->remote = (struct conn *)*r;
-    (*r)->remote = (struct conn *)*c;
+    (*c)->remote    = (struct conn *)*r;
+    (*c)->remote_id = (*r)->id;
+    (*r)->remote    = (struct conn *)*c;
+    (*r)->remote_id = (*c)->id;
 
     return 0;
 }
@@ -2460,8 +2462,11 @@ static int proxy_disconnect(lua_State *L)
     }
 
     r = (conn *) (*c)->remote;
-    r->remote = NULL;
-    (*c)->remote = NULL;
+
+    r->remote       = NULL;
+    r->remote_id    = 0;
+    (*c)->remote    = NULL;
+    (*c)->remote_id = 0;
 
     return 0;
 }

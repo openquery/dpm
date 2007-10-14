@@ -20,28 +20,32 @@
 -- Authentication is handled by the server instead of the proxy.
 
 callback = {}
-clients  = {}
-backends = {}
+conns    = {}
 
 -- Client just got lost. Wipe callbacks, client table.
 function client_closing(cid)
     print "Client died"
-    clients[cid] = nil
+    local client = conns[cid]
+    conns[cid] = nil
     callback[cid] = nil
     -- Disconnect the backend conn from mysql.
-    myp.close(backends[cid])
-    backends[cid] = nil
+    local backend = conns[client:remote_id()]
+    if backend then
+        if myp.close(backend) then
+            print "Successfully closed dead client's backend"
+        end
+    end
 end
 
 function new_client(c)
     -- "c" is a new listening connection object.
-    clients[c:id()] = c -- Prevent client from being garbage collected
+    conns[c:id()] = c -- Prevent client from being garbage collected
     callback[c:id()] = {["Client sent command"] = new_command,
                         ["Closing"]             = client_closing,}
 
     -- Init a backend just for this connection.
     local backend = new_backend(0)
-    backends[c:id()] = backend
+    conns[backend:id()] = backend
 
     -- Connect the backend to the client (and never disconnect later).
     myp.proxy_connect(c, backend)
@@ -53,13 +57,14 @@ end
 
 function new_command(cmd_pkt, cid)
     print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
+    local client = conns[cid]
 
     -- If user sends 'HELLO', rewrite it. Can do a few fun things here!
     if (cmd_pkt:argument() == "HELLO") then
         print "Rewriting packet to SELECT 1 + 1"
         cmd_pkt:argument("SELECT 1 + 1")
         -- Packet has been rewritten. Attach the backend and wire it.
-        myp.wire_packet(backends[cid], cmd_pkt)
+        myp.wire_packet(conns[client:remote_id()], cmd_pkt)
         -- Finally, return requesting to not proxy original packet.
         return myp.MYP_NOPROXY
    end
@@ -71,6 +76,14 @@ end
 
 function backend_death(cid)
     print "Backend died"
+    local backend = conns[cid]
+    conns[cid] = nil
+    local client = conns[backend:remote_id()]
+    if client then
+        if myp.close(client) then
+            print "Successfully closed backend's client"
+        end
+    end
 end
 
 function new_backend(cid)
