@@ -305,7 +305,6 @@ typedef struct {
     int listener;
 
     /* Proxy references. */
-    int next_call; /* next valid packet which will cause a callback. */
     struct conn *remote;
     uint64_t remote_id; /* Cached value for the remote conn id. */
     uint8_t alive; /* Whether or not we're alive. */

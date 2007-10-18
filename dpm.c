@@ -424,7 +424,6 @@ static conn *init_conn(int newfd)
     newc->last_cmd    = 0;
     newc->packet_seq  = 0;
     newc->listener    = 0;
-    newc->next_call   = -1;
 
     /* Set up the buffers. */
     newc->rbufsize = BUF_SIZE;
@@ -2353,20 +2352,6 @@ static int run_lua_callback(conn *c, int nargs)
     return ret;
 }
 
-/* LUA command for specifying the next time a packet parser/callback should
- * fire.
- * Can be any protocol event status. Useful for only intercepting a CMD packet
- * and fast-proxying the resultset.
- * FIXME: In order for this to be _actually_ useful, the verbose defines of
- * protocol states need to be injected into a lua global somewhere.
- */
-static int proxy_until(lua_State *L)
-{
-    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
-    (*c)->next_call = (int)luaL_checkinteger(L, 2);
-    return 0;
-}
-
 /* LUA command to kick off a close of a conn object.
  * Will spew error if conn is already closed.
  */
@@ -2588,7 +2573,6 @@ int main (int argc, char **argv)
         {"crypt_pass", crypt_pass},
         {"proxy_connect", proxy_connect},
         {"proxy_disconnect", proxy_disconnect},
-        {"proxy_until", proxy_until},
         {NULL, NULL},
     };
     /* Argument parsing helper. */

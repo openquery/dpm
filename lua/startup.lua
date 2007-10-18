@@ -79,8 +79,6 @@ end
 
 function new_command(cmd_pkt, cid)
     print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
-    -- Lets set this value on every command, even though it's persistent! :)
-    myp.proxy_until(clients[cid], 6) -- myc_sent_cmd
     if (cmd_pkt:command() == 1) then
         -- allow the client to close, but don't close the server.
         return myp.MYP_NOPROXY
@@ -106,7 +104,6 @@ end
 
 function server_ready(ok_pkt, cid)
     print("Backend ready!")
-    myp.proxy_until(backend, 11);
     callback[cid] = {["Server waiting command"] = finished_command,
                      ["Server got error"] = finished_command,
                      ["Closing"] = new_backend}
