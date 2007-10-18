@@ -19,7 +19,6 @@
 -- Each connecting client gets a dedicated backend connection.
 -- Authentication is handled by the server instead of the proxy.
 
-callback = {}
 conns    = {}
 
 -- Client just got lost. Wipe callbacks, client table.
@@ -27,7 +26,6 @@ function client_closing(cid)
     print "Client died"
     local client = conns[cid]
     conns[cid] = nil
-    callback[cid] = nil
     -- Disconnect the backend conn from mysql.
     local backend = conns[client:remote_id()]
     if backend then
@@ -38,10 +36,11 @@ function client_closing(cid)
 end
 
 function new_client(c)
+    print("New client connecting: " .. c:id())
     -- "c" is a new listening connection object.
     conns[c:id()] = c -- Prevent client from being garbage collected
-    callback[c:id()] = {["Client sent command"] = new_command,
-                        ["Closing"]             = client_closing,}
+    c:callback(myp.MYC_SENT_CMD, new_command);
+    c:callback(myp.MY_CLOSING, client_closing);
 
     -- Init a backend just for this connection.
     local backend = new_backend(0)
@@ -89,10 +88,10 @@ end
 function new_backend(cid)
     -- Create new connection.
     local backend = myp.connect("127.0.0.1", 3306)
-    callback[backend:id()] = {["Closing"] = backend_death}
+    backend:callback(myp.MY_CLOSING, backend_death)
     return backend
 end
 
 -- Set up the listener, register a callback for new clients.
 listen = myp.listener("127.0.0.1", 5500)
-callback[listen:id()] = {["Client connect"] = new_client}
+listen:callback(myp.MYC_CONNECT, new_client)
