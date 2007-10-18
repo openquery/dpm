@@ -19,8 +19,7 @@
 -- Each connecting client gets a dedicated backend connection.
 -- Authentication is handled by the server instead of the proxy.
 
-callback = {}
-clients  = {}
+conns    = {}
 backends = {}
 cmap     = {}
 rsets    = {}
@@ -29,21 +28,19 @@ squirrel = 0
 -- Client just got lost. Wipe callbacks, client table.
 function client_closing(cid)
     print "Client connection died."
-    clients[cid] = nil
-    callback[cid] = nil
-    backends[cid] = nil
+    conns[cid] = nil
 end
 
 function new_client(c)
     -- "c" is a new listening connection object.
-    clients[c:id()] = c -- Prevent client from being garbage collected
-    callback[c:id()] = {["Client sent command"] = new_command,
-                        ["Closing"]             = client_closing,}
+    conns[c:id()] = c -- Prevent client from being garbage collected
+    c:callback(myp.MYC_SENT_CMD, new_command);
+    c:callback(myp.MY_CLOSING, client_closing);
 
     -- Init a backend just for this connection.
     local backend = new_backend(0)
-    backends[c:id()] = backend
-    cmap[backend:id()] = c:id()
+    conns[backend:id()] = backend
+
     -- Connect the backend to the client (and never disconnect later).
     myp.proxy_connect(c, backend)
     -- This is a special case:
@@ -57,9 +54,10 @@ function new_command(cmd_pkt, cid)
     print("Proxying command: " .. arg .. " : " .. cmd_pkt:command())
 
     if string.upper(string.sub(arg, 1, 7)) == "SELECT " then
+        local client = conns[cid]
         local fake_cmd = myp.new_cmd_pkt()
         fake_cmd:argument("EXPLAIN " .. arg);
-        myp.wire_packet(backends[cid], fake_cmd)
+        myp.wire_packet(conns[client:remote_id()], fake_cmd)
         squirrel = cmd_pkt
         return myp.MYP_NOPROXY
     end
@@ -108,7 +106,7 @@ end
 
 function b_finish(eof_pkt, cid)
     if squirrel ~= 0 then
-        myp.wire_packet(backends[cmap[cid]], squirrel)
+        myp.wire_packet(conns[cid], squirrel)
         squirrel = 0
         return myp.MYP_NOPROXY
     end
@@ -117,16 +115,15 @@ end
 function new_backend(cid)
     -- Create new connection.
     local backend = myp.connect("127.0.0.1", 3306)
-    callback[backend:id()] = {["Closing"] = backend_death,
-                              ["Server sent resultset"] = b_rset,
-                              ["Server sending fields"] = b_fields,
-                              ["Server sending rows"] = b_rows,
-                              ["Server sent fields"]  = b_endfields,
-                              ["Server waiting command"] = b_finish,
-                             }
+    backend:callback(myp.MY_CLOSING, backend_death);
+    backend:callback(myp.MYS_SENT_RSET, b_rset);
+    backend:callback(myp.MYS_SENDING_FIELDS, b_fields);
+    backend:callback(myp.MYS_SENDING_ROWS, b_rows);
+    backend:callback(myp.MYS_SENT_FIELDS, b_endfields);
+    backend:callback(myp.MYS_WAIT_CMD, b_finish);
     return backend
 end
 
 -- Set up the listener, register a callback for new clients.
 listen = myp.listener("127.0.0.1", 5500)
-callback[listen:id()] = {["Client connect"] = new_client}
+listen:callback(myp.MYC_CONNECT, new_client)
