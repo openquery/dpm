@@ -444,6 +444,9 @@ static conn *init_conn(int newfd)
 
     newc->remote  = NULL;
 
+    /* Callback structures. Rest are zero from above memset. */
+    newc->package_callback = NULL;
+
     event_set(&newc->ev, newfd, newc->ev_flags, handle_event, (void *)newc);
     event_add(&newc->ev, NULL); /* error handling */
 
@@ -1983,7 +1986,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     #ifdef DBUG
     fprintf(stdout, "TX END State: %s\n", my_state_name[c->mypstate]);
     #endif
-    if (c->next_call == -1 || c->next_call == c->mypstate) {
+    if (CALLBACK_AVAILABLE(c)) {
         run_lua_callback(c, 0);
     }
     return ret;
@@ -2174,7 +2177,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         }
     }
 
-    if (consumer && ( c->next_call == -1 || c->next_call == c->mypstate )) {
+    if (consumer && CALLBACK_AVAILABLE(c)) {
         *p = consumer(c);
         nargs++;
     }
@@ -2237,7 +2240,7 @@ static int run_protocol(conn *c, int read, int written)
              * check that a pointer was returned. */
             /* if (p == NULL) return -1; */
 
-            if (c->next_call == -1 || c->next_call == c->mypstate) {
+            if (CALLBACK_AVAILABLE(c)) {
                 cbret = run_lua_callback(c, ret);
             }
 
@@ -2301,56 +2304,40 @@ static int run_protocol(conn *c, int read, int written)
  */
 static int run_lua_callback(conn *c, int nargs)
 {
-    int ret, top = 0;
+    int ret = 0;
+    int cb;
 
     #ifdef DBUG
     fprintf(stdout, "Running callback [%s] on conn id %llu\n", my_state_name[c->mypstate], (unsigned long long) c->id);
     #endif
 
+    /* If there's a package callback use it, else what's set for the conn. */
+    cb = CALLBACK_AVAILABLE(c);
+
+    /* Short circuit if there's no callback. Fast! */
+    if (cb == 0) {
+        lua_settop(L, 0);
+        return 0;
+    }
+
+    /* The conn id is always the last argument (duh, should it be the first?) */
     lua_pushinteger(L, c->id);
     nargs++;
 
-    top = lua_gettop(L); /* Save so we may saw off the top later */
-
-    lua_getglobal(L, "callback");
-    if (!lua_istable(L, -1)) {
-        lua_settop(L, 0);
-        return 0;
-    }
-
-    /* First stage is to find the table of callbacks for this connection id */
-    lua_pushnumber(L, c->id);
-    lua_gettable(L, -2);
-    if (!lua_istable(L, -1)) {
-        lua_settop(L, 0);
-        return 0;
-    }
-
-    /* Now the top of the stack should be another table... */
-    lua_getfield(L, -1, my_state_name[c->mypstate]);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, cb);
 
     /* Now the top o' the stack ought to be a function. */
     if (!lua_isfunction(L, -1)) {
+        fprintf(stderr, "ERROR: Callback should always be a function!");
         lua_settop(L, 0);
         return 0;
     }
 
     lua_insert(L, 1);
-    /* Function's now on the bottom, but two levels of callback table are above.
-     * so pop them out and we should have the right order. */
-    lua_pop(L, 2);
 
-    /* FIXME: Debug crap. */
-    if (!lua_isfunction(L, 1) || lua_gettop(L) < nargs + 1) {
-        fprintf(stderr, "ERROR running callback, dumping stack\n");
-        lua_settop(L, 0);
-        dump_stack();
-        return 0;
-    }
-
-    /* Finally, call the function? We should push some args too */
+    /* Finally, call the function? Push some args too */
     if (lua_pcall(L, nargs, 1, 0) != 0) {
-        fprintf(stderr, "Error running callback '%s': %s\n", my_state_name[c->mypstate], lua_tostring(L, -1));
+        fprintf(stderr, "ERROR: running callback '%s': %s\n", my_state_name[c->mypstate], lua_tostring(L, -1));
         lua_pop(L, -1);
     }
 

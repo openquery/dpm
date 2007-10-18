@@ -205,6 +205,35 @@ enum mypacket_types {
     myp_stats,
 };
 
+/* This enum is to help transition off of the lowercase style.
+ * Lets define both for now, update everything over a few commits, then remove
+ * the old one.
+ */
+enum MYPROTO_STATES {
+    MYS_CONNECT,
+    MYC_CONNECT,
+    MYS_SENT_HANDSHAKE,
+    MYC_WAIT_HANDSHAKE,
+    MYC_WAITING, /* Waiting to send a command. */
+    MYS_WAITING, /* Waiting to receive a command. */
+    MYC_SENT_CMD,
+    MYS_SENDING_FIELDS,
+    MYS_SENDING_ROWS,
+    MYS_WAIT_AUTH,
+    MYS_SENDING_OK,
+    MYS_WAIT_CMD,
+    MYS_SENDING_RSET,
+    MYC_WAIT_AUTH,
+    MYS_SENDING_HANDSHAKE,
+    MYS_RECV_ERR,
+    MY_CLOSING,
+    MYS_SENDING_STATS,
+    MYS_GOT_CMD, /* Server received command */
+    MYS_SENDING_EOF, /* The "data marker" at end of fields or end of rows. */
+    MYS_SENT_RSET,
+    MYS_SENT_FIELDS,
+};
+
 enum myproto_states {
     mys_connect,
     myc_connect,
@@ -238,6 +267,10 @@ enum my_types {
 #define MYP_OK 0
 #define MYP_NOPROXY 1
 #define MYP_FLUSH_DISCONNECT 2
+
+#define CALLBACK_AVAILABLE(c) \
+( (c->package_callback != NULL && c->package_callback[c->mypstate] != 0) \
+? c->package_callback[c->mypstate] : c->main_callback[c->mypstate] )
 
 /* Structs... */
 typedef struct {
@@ -273,6 +306,11 @@ typedef struct {
     struct conn *remote;
     uint64_t remote_id; /* Cached value for the remote conn id. */
     uint8_t alive; /* Whether or not we're alive. */
+
+    /* Callback information. */
+    int main_callback[25]; /* Each connection can be different. */
+    int *package_callback; /* ... and packages may take over.   */
+    int package_callback_ref; /* Reference to the callback object. */
 } conn;
 
 typedef struct {

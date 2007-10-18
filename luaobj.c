@@ -41,6 +41,9 @@ static int obj_uint32_t(lua_State *L, void *var, void *var2);
 static int obj_uint16_t(lua_State *L, void *var, void *var2);
 static int obj_uint8_t(lua_State *L, void *var, void *var2);
 
+/* Special connection accessors. */
+static int obj_conn_callback(lua_State *L, void *var, void *var2);
+
 /* Resultset accessors. */
 static int obj_rset_field_count(lua_State *L, void *var, void *var2);
 static int obj_rset_add_field(lua_State *L, void *var, void *var2);
@@ -58,6 +61,7 @@ static const obj_reg conn_regs [] = {
     {"remote_id", obj_uint64_t, LO_READONLY, offsetof(conn, remote_id), 0},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
     {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type), 0},
+    {"callback", obj_conn_callback, LO_READWRITE, offsetof(conn, main_callback), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -199,6 +203,44 @@ void dump_stack()
 }
 
 /* Accessor functions */
+
+/* Registers a single callback into a connection. Argument should be a number.
+ */
+static int obj_conn_callback(lua_State *L, void *var, void *var2)
+{
+    int *callback = var;
+    int state_number;
+    int t;
+
+    if (lua_gettop(L) < 3) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    state_number = luaL_checkinteger(L, 2);
+
+    /* TODO: Should this "max" be defined near the enum? */
+    if (state_number > 24)
+        luaL_error(L, "Invalid callback state number %d!", state_number);
+
+    t = lua_type(L, 3);
+    if (t == LUA_TFUNCTION) {
+        /* Toss a copy of the function to the top of the stack. */
+        lua_pushvalue(L, 3);
+
+        /* ... and collapse it into a reference. */
+        callback[state_number] = luaL_ref(L, LUA_REGISTRYINDEX);
+    } else if (t == LUA_TNIL) {
+        if (callback[state_number] != 0)
+            luaL_unref(L, LUA_REGISTRYINDEX, callback[state_number]);
+
+        callback[state_number] = 0;
+    } else {
+        luaL_error(L, "Argument for callback must be a function or nil");
+    }
+
+    return 0;
+}
 
 /* Stub for field full (re)write accessor. */
 static int obj_field_full(lua_State *L, void *var, void *var2)
@@ -793,6 +835,30 @@ int register_obj_defines(lua_State *L)
     MYP_D(MYP_OK);
     MYP_D(MYP_NOPROXY);
     MYP_D(MYP_FLUSH_DISCONNECT);
+
+    /* State fields. */
+    MYP_D(MYS_CONNECT)
+    MYP_D(MYC_CONNECT)
+    MYP_D(MYS_SENT_HANDSHAKE)
+    MYP_D(MYC_WAIT_HANDSHAKE)
+    MYP_D(MYC_WAITING)
+    MYP_D(MYS_WAITING)
+    MYP_D(MYC_SENT_CMD)
+    MYP_D(MYS_SENDING_FIELDS)
+    MYP_D(MYS_SENDING_ROWS)
+    MYP_D(MYS_WAIT_AUTH)
+    MYP_D(MYS_SENDING_OK)
+    MYP_D(MYS_WAIT_CMD)
+    MYP_D(MYS_SENDING_RSET)
+    MYP_D(MYC_WAIT_AUTH)
+    MYP_D(MYS_SENDING_HANDSHAKE)
+    MYP_D(MYS_RECV_ERR)
+    MYP_D(MY_CLOSING)
+    MYP_D(MYS_SENDING_STATS)
+    MYP_D(MYS_GOT_CMD)
+    MYP_D(MYS_SENDING_EOF)
+    MYP_D(MYS_SENT_RSET)
+    MYP_D(MYS_SENT_FIELDS)
 
     /* MySQL Protocol layer defines. */
 
