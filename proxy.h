@@ -259,6 +259,9 @@ enum myproto_states {
     mys_sent_fields,
 };
 
+/* It's a lie. */
+#define TOTAL_STATES 25
+
 enum my_types {
     MY_SERVER, /* Conn is a server connection */
     MY_CLIENT, /* Conn is a client connection */

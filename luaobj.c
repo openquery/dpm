@@ -174,7 +174,15 @@ static const obj_toreg regs [] = {
  */
 static int conn_gc(lua_State *L)
 {
+    int i;
     conn **c;
+    c = lua_touserdata(L, 1);
+
+    for (i = 0; i < TOTAL_STATES; i++) {
+        if ((*c)->main_callback[i] != 0)
+            luaL_unref(L, LUA_REGISTRYINDEX, (*c)->main_callback[i]);
+    }
+
     free(*c);
 
     return 0;
@@ -220,7 +228,7 @@ static int obj_conn_callback(lua_State *L, void *var, void *var2)
     state_number = luaL_checkinteger(L, 2);
 
     /* TODO: Should this "max" be defined near the enum? */
-    if (state_number > 24)
+    if (state_number > TOTAL_STATES - 1)
         luaL_error(L, "Invalid callback state number %d!", state_number);
 
     t = lua_type(L, 3);
