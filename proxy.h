@@ -315,6 +315,11 @@ typedef struct {
     int package_callback_ref; /* Reference to the callback object. */
 } conn;
 
+/* This fits into connection object. */
+typedef struct {
+    int callback[25];
+} my_callback_obj;
+
 typedef struct {
     int ptype;
     void    (*free_me) (void *p);

@@ -23,6 +23,7 @@
 
 /* Forward declarations */
 static int conn_gc(lua_State *L);
+static int callback_gc(lua_State *L);
 static int packet_gc(lua_State *L);
 
 static int  obj_index(lua_State *L);
@@ -41,8 +42,12 @@ static int obj_uint32_t(lua_State *L, void *var, void *var2);
 static int obj_uint16_t(lua_State *L, void *var, void *var2);
 static int obj_uint8_t(lua_State *L, void *var, void *var2);
 
+void *my_new_callback_object();
+/* Package callback accessors. */
+static int obj_callback_register(lua_State *L, void *var, void *var2);
+
 /* Special connection accessors. */
-static int obj_conn_callback(lua_State *L, void *var, void *var2);
+static int obj_conn_package_callback(lua_State *L, void *var, void *var2);
 
 /* Resultset accessors. */
 static int obj_rset_field_count(lua_State *L, void *var, void *var2);
@@ -61,7 +66,8 @@ static const obj_reg conn_regs [] = {
     {"remote_id", obj_uint64_t, LO_READONLY, offsetof(conn, remote_id), 0},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
     {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type), 0},
-    {"callback", obj_conn_callback, LO_READWRITE, offsetof(conn, main_callback), 0},
+    {"callback", obj_callback_register, LO_READWRITE, offsetof(conn, main_callback), 0},
+    {"package_callback", obj_conn_package_callback, LO_READWRITE, offsetof(conn, package_callback), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -145,6 +151,11 @@ static const obj_reg eof_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+static const obj_reg callback_regs [] = {
+    {"register", obj_callback_register, LO_READWRITE, offsetof(my_callback_obj, callback), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", packet_gc},
     {NULL, NULL},
@@ -152,6 +163,11 @@ static const luaL_Reg generic_m [] = {
 
 static const luaL_Reg conn_m [] = {
     {"__gc", conn_gc},
+    {NULL, NULL},
+};
+
+static const luaL_Reg callback_m [] = {
+    {"__gc", callback_gc},
     {NULL, NULL},
 };
 
@@ -166,11 +182,27 @@ static const obj_toreg regs [] = {
     {"myp.field", field_regs, generic_m, my_new_field_packet, "new_field_pkt"},
     {"myp.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
     {"myp.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
+    {"myp.callback", eof_regs, callback_m, my_new_callback_object, "new_callback"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
+void *my_new_callback_object()
+{
+    my_callback_obj *o;
+
+    o = malloc( sizeof(my_callback_obj) );
+    if (o == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(o, 0, sizeof(my_callback_obj));
+
+    return o;
+}
+
 /* Nothing special for now. This ensures we don't segfault when calling the
  * packet gc on a connection obj.
+ * TODO: Should check if conn is alive, and handle_close it if so.
  */
 static int conn_gc(lua_State *L)
 {
@@ -184,6 +216,23 @@ static int conn_gc(lua_State *L)
     }
 
     free(*c);
+
+    return 0;
+}
+
+/* Flat gc for callback objects. */
+static int callback_gc(lua_State *L)
+{
+    int i;
+    my_callback_obj **o;
+    o = lua_touserdata(L, 1);
+
+    for (i = 0; i < TOTAL_STATES; i++) {
+        if ((*o)->callback[i] != 0)
+            luaL_unref(L, LUA_REGISTRYINDEX, (*o)->callback[i]);
+    }
+
+    free(*o);
 
     return 0;
 }
@@ -212,9 +261,32 @@ void dump_stack()
 
 /* Accessor functions */
 
-/* Registers a single callback into a connection. Argument should be a number.
- */
-static int obj_conn_callback(lua_State *L, void *var, void *var2)
+static int obj_conn_package_callback(lua_State *L, void *var, void *var2)
+{
+    conn *c = var2;
+    my_callback_obj **o;
+
+    if (lua_gettop(L) != 2)
+        return luaL_error(L, "Wrong number of arguments");
+
+    if (lua_isnil(L, 2)) {
+        c->package_callback = NULL;
+        if (c->package_callback_ref != 0)
+            luaL_unref(L, LUA_REGISTRYINDEX, c->package_callback_ref);
+        c->package_callback_ref = 0;
+        return 0;
+    }
+
+    o = luaL_checkudata(L, 2, "myp.callback");
+    c->package_callback = (*o)->callback;
+    c->package_callback_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    return 0;
+}
+
+/* Registers a single callback into a connection or callback object. 
+ * Argument should be a number + function */
+static int obj_callback_register(lua_State *L, void *var, void *var2)
 {
     int *callback = var;
     int state_number;
