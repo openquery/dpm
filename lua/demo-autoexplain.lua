@@ -20,9 +20,8 @@
 -- Authentication is handled by the server instead of the proxy.
 
 conns    = {}
-backends = {}
-cmap     = {}
 rsets    = {}
+callback = myp.new_callback()
 squirrel = 0
 
 -- Client just got lost. Wipe callbacks, client table.
@@ -34,8 +33,8 @@ end
 function new_client(c)
     -- "c" is a new listening connection object.
     conns[c:id()] = c -- Prevent client from being garbage collected
-    c:callback(myp.MYC_SENT_CMD, new_command);
-    c:callback(myp.MY_CLOSING, client_closing);
+    c:register(myp.MYC_SENT_CMD, new_command);
+    c:register(myp.MY_CLOSING, client_closing);
 
     -- Init a backend just for this connection.
     local backend = new_backend(0)
@@ -56,8 +55,14 @@ function new_command(cmd_pkt, cid)
     if string.upper(string.sub(arg, 1, 7)) == "SELECT " then
         local client = conns[cid]
         local fake_cmd = myp.new_cmd_pkt()
+        local backend = conns[client:remote_id()]
+
+        -- We have a query to analyze... Swap in the callback object we
+        -- prepped earlier, prepend EXPLAIN to the string, and run the
+        -- command.
+        backend:package_register(callback)
         fake_cmd:argument("EXPLAIN " .. arg);
-        myp.wire_packet(conns[client:remote_id()], fake_cmd)
+        myp.wire_packet(backend, fake_cmd)
         squirrel = cmd_pkt
         return myp.MYP_NOPROXY
     end
@@ -72,58 +77,59 @@ function backend_death(cid)
 end
 
 function b_rset(rset_pkt, cid)
-    if squirrel ~= 0 then
-        rsets[cid] = rset_pkt
-        return myp.MYP_NOPROXY
-    end
+    rsets[cid] = rset_pkt
+    return myp.MYP_NOPROXY
 end
 
 function b_fields(field_pkt, cid)
-    if squirrel ~= 0 then
-        local rset = rsets[cid]
-        rset:add_field(field_pkt)
-        return myp.MYP_NOPROXY
-    end
+    local rset = rsets[cid]
+    rset:add_field(field_pkt)
+    return myp.MYP_NOPROXY
 end
 
 function b_rows(row_pkt, cid)
-    if squirrel ~= 0 then
-        local rset = rsets[cid]
-        local rowdata = rset:parse_row_table(row_pkt)
-        io.write("EXPLAIN:\n")
-        for k, v in pairs(rowdata) do
-          io.write(string.format(" %s: %s\n", k, v))
-        end
-        return myp.MYP_NOPROXY
+    local rset = rsets[cid]
+    local rowdata = rset:parse_row_table(row_pkt)
+    io.write("EXPLAIN:\n")
+    for k, v in pairs(rowdata) do
+      io.write(string.format(" %s: %s\n", k, v))
     end
+    return myp.MYP_NOPROXY
 end
 
 function b_endfields(eof_pkt, cid)
-   if squirrel ~= 0 then
-       return myp.MYP_NOPROXY
-   end
+   return myp.MYP_NOPROXY
 end
 
 function b_finish(eof_pkt, cid)
-    if squirrel ~= 0 then
-        myp.wire_packet(conns[cid], squirrel)
-        squirrel = 0
-        return myp.MYP_NOPROXY
-    end
+    local backend = conns[cid]
+
+    -- Finished with the command, swap out the "autoexplain" callback object
+    -- so the actual query results go through nice and fast, as well as
+    -- simplifying the autoexplain logic.
+    backend:package_register(nil)
+    myp.wire_packet(backend, squirrel)
+    return myp.MYP_NOPROXY
 end
 
 function new_backend(cid)
     -- Create new connection.
     local backend = myp.connect("127.0.0.1", 3306)
-    backend:callback(myp.MY_CLOSING, backend_death);
-    backend:callback(myp.MYS_SENT_RSET, b_rset);
-    backend:callback(myp.MYS_SENDING_FIELDS, b_fields);
-    backend:callback(myp.MYS_SENDING_ROWS, b_rows);
-    backend:callback(myp.MYS_SENT_FIELDS, b_endfields);
-    backend:callback(myp.MYS_WAIT_CMD, b_finish);
+    backend:register(myp.MY_CLOSING, backend_death);
     return backend
 end
 
 -- Set up the listener, register a callback for new clients.
 listen = myp.listener("127.0.0.1", 5500)
-listen:callback(myp.MYC_CONNECT, new_client)
+listen:register(myp.MYC_CONNECT, new_client)
+
+-- Prep the generic "callback" object for this "package" demo.
+-- When we want to analyze a query we swap this object in to define the
+-- callbacks.
+callback:register(myp.MY_CLOSING, backend_death);
+callback:register(myp.MYS_SENT_RSET, b_rset);
+callback:register(myp.MYS_SENDING_FIELDS, b_fields);
+callback:register(myp.MYS_SENDING_ROWS, b_rows);
+callback:register(myp.MYS_SENT_FIELDS, b_endfields);
+callback:register(myp.MYS_WAIT_CMD, b_finish);
+

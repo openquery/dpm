@@ -47,7 +47,7 @@ void *my_new_callback_object();
 static int obj_callback_register(lua_State *L, void *var, void *var2);
 
 /* Special connection accessors. */
-static int obj_conn_package_callback(lua_State *L, void *var, void *var2);
+static int obj_conn_package_register(lua_State *L, void *var, void *var2);
 
 /* Resultset accessors. */
 static int obj_rset_field_count(lua_State *L, void *var, void *var2);
@@ -66,8 +66,8 @@ static const obj_reg conn_regs [] = {
     {"remote_id", obj_uint64_t, LO_READONLY, offsetof(conn, remote_id), 0},
     {"listener", obj_int, LO_READONLY, offsetof(conn, listener), 0},
     {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type), 0},
-    {"callback", obj_callback_register, LO_READWRITE, offsetof(conn, main_callback), 0},
-    {"package_callback", obj_conn_package_callback, LO_READWRITE, offsetof(conn, package_callback), 0},
+    {"register", obj_callback_register, LO_READWRITE, offsetof(conn, main_callback), 0},
+    {"package_register", obj_conn_package_register, LO_READWRITE, offsetof(conn, package_callback), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -182,7 +182,7 @@ static const obj_toreg regs [] = {
     {"myp.field", field_regs, generic_m, my_new_field_packet, "new_field_pkt"},
     {"myp.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
     {"myp.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
-    {"myp.callback", eof_regs, callback_m, my_new_callback_object, "new_callback"},
+    {"myp.callback", callback_regs, callback_m, my_new_callback_object, "new_callback"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -261,7 +261,7 @@ void dump_stack()
 
 /* Accessor functions */
 
-static int obj_conn_package_callback(lua_State *L, void *var, void *var2)
+static int obj_conn_package_register(lua_State *L, void *var, void *var2)
 {
     conn *c = var2;
     my_callback_obj **o;
