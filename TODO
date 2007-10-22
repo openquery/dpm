@@ -1,6 +1,5 @@
 Blockers for release-4:
 
-- new faster callback registration
 - learn to handle large mysql packets (at least identify them, and bomb saying
   they're not supported)
 - more demos/libraries that make use of the new callback setup.
