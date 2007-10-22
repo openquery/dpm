@@ -2168,7 +2168,6 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             consumer = my_consume_err_packet;
             c->packet_seq = 0;
             c->mypstate = mys_recv_err;
-            nargs++;
         }
 
         if (c->mypstate == mys_wait_cmd) {
