@@ -23,7 +23,6 @@
 --                       original packet.
 -- MYP_FLUSH_DISCONNECT  Flush packet on wire and disconnect clients
 
-callback = {}
 clients  = {}
 storage  = {}
 
@@ -34,15 +33,16 @@ BACKEND_PASSWORD = "wheefun"
 function client_ok(cid)
     print("Client ready! id: " .. cid)
     -- Wipe any crazy callbacks. Act as a passthrough.
-    callback[cid] = {["Client waiting"] = nil, 
-                     ["Client sent command"] = new_command,
-                     ["Closing"] = client_closing,}
+    local client = clients[cid]
+    client:register(myp.MYC_WAITING, nil)
+    client:register(myp.MYC_SENT_CMD, new_command)
+    client:register(myp.MY_CLOSING, client_closing)
 end
 
 -- Client just got lost. Wipe callbacks, client table.
 function client_closing(cid)
+    print "Client died"
     clients[cid] = nil
-    callback[cid] = nil
 end
 
 function client_got_auth(auth_pkt, cid)
@@ -52,15 +52,16 @@ function client_got_auth(auth_pkt, cid)
         local ok_pkt = myp.new_ok_pkt()
         -- FIXME: Prior to this stage "Client waiting" should mean "Client got
         -- auth"
-        callback[cid] = {["Client waiting"] = client_ok}
+        local client = clients[cid]
+        client:register(myp.MYC_WAITING, client_ok)
         myp.wire_packet(clients[cid], ok_pkt)
-        -- myp.proxy_connect(clients[cid], backend)
     else
         print "Passwords did NOT match!"
         local err_pkt = myp.new_err_pkt()
-        callback[cid] = nil
+        err_pkt:sqlstate("28000")
+        err_pkt:errnum(1045)
+        err_pkt:message("Access denied for user '" .. auth_pkt:user() .. "'@'whatever'")
         myp.wire_packet(clients[cid], err_pkt)
-        clients[cid] = nil
     end
 
     storage[cid] = nil
@@ -70,8 +71,11 @@ function new_client(c)
     -- "c" is a new listening connection object.
     print("It's a new client! id: " .. c:id())
     clients[c:id()] = c -- Prevent client from being garbage collected
-    callback[c:id()] = {["Client waiting"] = client_got_auth}
+    c:register(myp.MYC_WAITING, client_got_auth)
 
+    -- Handshake packets are pre-generated close to how we want it.
+    -- An exersize for the reader would be to tailor this a little based on
+    -- the handshake packet supplied by the backend server!
     local hs_pkt = myp.new_handshake_pkt()
     myp.wire_packet(c, hs_pkt)
     storage[c:id()] = hs_pkt
@@ -79,7 +83,7 @@ end
 
 function new_command(cmd_pkt, cid)
     print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
-    if (cmd_pkt:command() == 1) then
+    if (cmd_pkt:command() == myp.COM_QUIT) then
         -- allow the client to close, but don't close the server.
         return myp.MYP_NOPROXY
     end
@@ -104,9 +108,9 @@ end
 
 function server_ready(ok_pkt, cid)
     print("Backend ready!")
-    callback[cid] = {["Server waiting command"] = finished_command,
-                     ["Server got error"] = finished_command,
-                     ["Closing"] = new_backend}
+    backend:register(myp.MYS_WAIT_CMD, finished_command)
+    backend:register(myp.MYS_RECV_ERR, finished_command)
+    backend:register(myp.MY_CLOSING, new_backend)
 end
 
 function server_handshake(hs_pkt, cid)
@@ -118,28 +122,28 @@ function server_handshake(hs_pkt, cid)
 
     myp.wire_packet(backend, auth_pkt)
     -- Don't need to store anything, server will return 'ok' or 'err' packet.
-    callback[backend:id()] = {["Server waiting command"] = server_ready,
-                              ["Server got error"] = server_err,
-                              ["Closing"] = new_backend}
+    backend:register(myp.MYS_WAIT_CMD, server_ready)
+    backend:register(myp.MYS_RECV_ERR, server_err)
+    backend:register(myp.MY_CLOSING, new_backend)
 end
 
+-- TODO: This should sleep.
 function new_backend(cid)
     print "Creating new backend..."
     -- This function is overloaded slightly.
     -- If we were passed a cid, remove it from callbacks table (dead conn)
     if cid ~= 0 then
         print "Backend died! Could not authenticate or connect!"
-        callback[cid] = nil
     end
 
     -- Then create new connection.
     backend = myp.connect("127.0.0.1", 3306)
-    callback[backend:id()] = {["Server waiting auth"] = server_handshake}
+    backend:register(myp.MYS_WAIT_AUTH, server_handshake)
 end
 
 -- Set up the listener, register a callback for new clients.
 listen = myp.listener("127.0.0.1", 5500)
-callback[listen:id()] = {["Client connect"] = new_client}
+listen:register(myp.MYC_CONNECT, new_client)
 
 -- Fire off the backend. NOTE that this won't retry or event print decent
 -- errors if it fails :)
