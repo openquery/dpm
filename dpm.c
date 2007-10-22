@@ -2311,7 +2311,12 @@ static int run_lua_callback(conn *c, int nargs)
     #endif
 
     /* If there's a package callback use it, else what's set for the conn. */
-    cb = CALLBACK_AVAILABLE(c);
+    /* Always handle MY_CLOSING from the connection level. */
+    if (c->mypstate == MY_CLOSING && c->main_callback[MY_CLOSING]) {
+        cb = c->main_callback[MY_CLOSING];
+    } else {
+        cb = CALLBACK_AVAILABLE(c);
+    }
 
     /* Short circuit if there's no callback. Fast! */
     if (cb == 0) {
