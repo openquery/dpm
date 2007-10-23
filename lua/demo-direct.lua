@@ -39,8 +39,8 @@ function new_client(c)
     print("New client connecting: " .. c:id())
     -- "c" is a new listening connection object.
     conns[c:id()] = c -- Prevent client from being garbage collected
-    c:callback(myp.MYC_SENT_CMD, new_command);
-    c:callback(myp.MY_CLOSING, client_closing);
+    c:register(myp.MYC_SENT_CMD, new_command);
+    c:register(myp.MY_CLOSING, client_closing);
 
     -- Init a backend just for this connection.
     local backend = new_backend(0)
@@ -88,10 +88,10 @@ end
 function new_backend(cid)
     -- Create new connection.
     local backend = myp.connect("127.0.0.1", 3306)
-    backend:callback(myp.MY_CLOSING, backend_death)
+    backend:register(myp.MY_CLOSING, backend_death)
     return backend
 end
 
 -- Set up the listener, register a callback for new clients.
 listen = myp.listener("127.0.0.1", 5500)
-listen:callback(myp.MYC_CONNECT, new_client)
+listen:register(myp.MYC_CONNECT, new_client)
