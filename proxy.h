@@ -209,7 +209,7 @@ enum mypacket_types {
  * Lets define both for now, update everything over a few commits, then remove
  * the old one.
  */
-enum MYPROTO_STATES {
+enum myproto_states {
     MYS_CONNECT,
     MYC_CONNECT,
     MYS_SENT_HANDSHAKE,
@@ -232,31 +232,6 @@ enum MYPROTO_STATES {
     MYS_SENDING_EOF, /* The "data marker" at end of fields or end of rows. */
     MYS_SENT_RSET,
     MYS_SENT_FIELDS,
-};
-
-enum myproto_states {
-    mys_connect,
-    myc_connect,
-    mys_sent_handshake,
-    myc_wait_handshake,
-    myc_waiting, /* Waiting to send a command. */
-    mys_waiting, /* Waiting to receive a command. */
-    myc_sent_cmd,
-    mys_sending_fields,
-    mys_sending_rows,
-    mys_wait_auth,
-    mys_sending_ok,
-    mys_wait_cmd,
-    mys_sending_rset,
-    myc_wait_auth,
-    mys_sending_handshake,
-    mys_recv_err,
-    my_closing,
-    mys_sending_stats,
-    mys_got_cmd, /* Server received command */
-    mys_sending_eof, /* The "data marker" at end of fields or end of rows. */
-    mys_sent_rset,
-    mys_sent_fields,
 };
 
 /* It's a lie. */

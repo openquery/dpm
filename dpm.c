@@ -241,7 +241,7 @@ static void handle_close(conn *c)
     conn *remote;
     assert(c != 0);
 
-    c->mypstate = my_closing;
+    c->mypstate = MY_CLOSING;
     run_lua_callback(c, 0);
     event_del(&c->ev);
 
@@ -476,14 +476,14 @@ static void handle_event(int fd, short event, void *arg)
         if (newc == NULL)
             return;
 
-        newc->mypstate  = myc_wait_handshake;
+        newc->mypstate  = MYC_WAIT_HANDSHAKE;
         newc->my_type   = MY_CLIENT;
         newc->alive++;
 
         /* Pass the object up into lua for later inspection. */
         new_obj(L, newc, "myp.conn");
 
-        c->mypstate = myc_connect;
+        c->mypstate = MYC_CONNECT;
         run_lua_callback(c, 1);
 
         /* The callback might've written packets to the wire. */
@@ -1956,27 +1956,27 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
          * clients from lua without going crazy and pulling out all your hair.
          */
         switch (c->mypstate) {
-        case myc_sent_cmd:
-            c->mypstate = myc_waiting; /* FIXME: Should be reading results */
+        case MYC_SENT_CMD:
+            c->mypstate = MYC_WAITING; /* FIXME: Should be reading results */
             break;
-        case myc_wait_handshake:
+        case MYC_WAIT_HANDSHAKE:
             assert(ptype == myp_handshake);
-            c->mypstate = myc_wait_auth;
+            c->mypstate = MYC_WAIT_AUTH;
         }
         break;
     case MY_SERVER:
         switch (c->mypstate) {
-        case mys_wait_auth:
+        case MYS_WAIT_AUTH:
             assert(ptype == myp_auth);
-            c->mypstate = mys_sending_ok;
+            c->mypstate = MYS_SENDING_OK;
             break;
-        case mys_recv_err:
-        case mys_wait_cmd:
+        case MYS_RECV_ERR:
+        case MYS_WAIT_CMD:
             assert(ptype == myp_cmd);
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
             c->last_cmd = cmd->command;
-            c->mypstate = mys_got_cmd;
+            c->mypstate = MYS_GOT_CMD;
             }
             break;
         }
@@ -2012,16 +2012,16 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     switch (c->my_type) {
     case MY_CLIENT:
         switch (c->mypstate) {
-        case myc_wait_auth:
+        case MYC_WAIT_AUTH:
             consumer = my_consume_auth_packet;
             *ptype = myp_auth;
-            c->mypstate = myc_waiting;
+            c->mypstate = MYC_WAITING;
             break;
-        case myc_waiting:
+        case MYC_WAITING:
             /* command packets must always be consumed. */
             *p = my_consume_cmd_packet(c);
             *ptype = myp_cmd;
-            c->mypstate = myc_sent_cmd;
+            c->mypstate = MYC_SENT_CMD;
             /* Kick off the packet sequencer. */
             c->packet_seq = 1;
             nargs++;
@@ -2033,31 +2033,31 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
          * start parsing something else.
          */
         switch (c->mypstate) {
-            case mys_sent_rset:
-                c->mypstate = mys_sending_fields;
+            case MYS_SENT_RSET:
+                c->mypstate = MYS_SENDING_FIELDS;
                 break;
-            case mys_sent_fields:
-                c->mypstate = mys_sending_rows;
+            case MYS_SENT_FIELDS:
+                c->mypstate = MYS_SENDING_ROWS;
                 break;
         }
 
         /* If we were just sent a command, flip the state depending on the
          * command sent.
          */
-        if (c->mypstate == mys_got_cmd) {
+        if (c->mypstate == MYS_GOT_CMD) {
             switch (c->last_cmd) {
             case COM_QUERY:
-                c->mypstate = mys_sending_rset;
+                c->mypstate = MYS_SENDING_RSET;
                 break;
             case COM_FIELD_LIST:
-                c->mypstate = mys_sending_fields;
+                c->mypstate = MYS_SENDING_FIELDS;
                 break;
             case COM_INIT_DB:
             case COM_QUIT:
-                c->mypstate = mys_sending_ok;
+                c->mypstate = MYS_SENDING_OK;
                 break;
             case COM_STATISTICS:
-                c->mypstate = mys_sending_stats;
+                c->mypstate = MYS_SENDING_STATS;
                 break;
             default:
                 fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
@@ -2067,17 +2067,17 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
 
         /* Primary packet consumption. */
         switch (c->mypstate) {
-        case mys_connect:
+        case MYS_CONNECT:
             consumer = my_consume_handshake_packet;
             *ptype = myp_handshake;
-            c->mypstate = mys_wait_auth;
+            c->mypstate = MYS_WAIT_AUTH;
             break;
-        case mys_sending_ok:
+        case MYS_SENDING_OK:
             switch (field_count) {
             case 0:
                 consumer = my_consume_ok_packet;
                 *ptype = myp_ok;
-                c->mypstate = mys_wait_cmd;
+                c->mypstate = MYS_WAIT_CMD;
                 break;
             case 255:
                 *ptype = myp_err;
@@ -2087,12 +2087,12 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 assert(field_count == 0 || field_count == 255);
             }
             break;
-        case mys_sending_rset:
+        case MYS_SENDING_RSET:
             switch (field_count) {
             case 0:
                 consumer = my_consume_ok_packet;
                 *ptype = myp_ok;
-                c->mypstate = mys_wait_cmd;
+                c->mypstate = MYS_WAIT_CMD;
                 break;
             case 255:
                 *ptype = myp_err;
@@ -2100,10 +2100,10 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             default:
                 consumer = my_consume_rset_packet;
                 *ptype = myp_rset;
-                c->mypstate = mys_sent_rset;
+                c->mypstate = MYS_SENT_RSET;
             }
             break;
-        case mys_sending_fields:
+        case MYS_SENDING_FIELDS:
             switch (field_count) {
             case 254:
                 /* Grr. impossible to tell an EOF apart from a ROW or FIELD
@@ -2112,12 +2112,12 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                     consumer = my_consume_eof_packet;
                     *ptype = myp_eof;
                     /* Can change this to another switch, or cuddle a flag under
-                     * case 'mys_wait_cmd', if it's really more complex.
+                     * case 'MYS_WAIT_CMD', if it's really more complex.
                      */
                     if (c->last_cmd == COM_QUERY) {
-                        c->mypstate = mys_sent_fields;
+                        c->mypstate = MYS_SENT_FIELDS;
                     } else {
-                        c->mypstate = mys_wait_cmd;
+                        c->mypstate = MYS_WAIT_CMD;
                     }
                 break;
                 }
@@ -2129,21 +2129,21 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 *ptype = myp_field;
             }
             break;
-        case mys_sending_stats:
+        case MYS_SENDING_STATS:
             /* Stats packet is obscure. There's no way to get an error from it
              * so you might as well just parse the stupid thing.
              */
             /* FIXME: consumer = my_consume_stats_packet; */
             *ptype = myp_stats;
-            c->mypstate = mys_wait_cmd;
+            c->mypstate = MYS_WAIT_CMD;
             break;
-        case mys_sending_rows:
+        case MYS_SENDING_ROWS:
             switch (field_count) {
             case 254:
                 if (c->packetsize < 10) {
                 consumer = my_consume_eof_packet;
                 *ptype = myp_eof;
-                c->mypstate = mys_wait_cmd;
+                c->mypstate = MYS_WAIT_CMD;
                 break;
                 }
             case 255:
@@ -2155,7 +2155,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                 break;
             }
             break;
-        case mys_wait_cmd:
+        case MYS_WAIT_CMD:
             /* Should never get here! Server must have a command when sending
              * results!
              */
@@ -2167,10 +2167,10 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         if (*ptype == myp_err) {
             consumer = my_consume_err_packet;
             c->packet_seq = 0;
-            c->mypstate = mys_recv_err;
+            c->mypstate = MYS_RECV_ERR;
         }
 
-        if (c->mypstate == mys_wait_cmd) {
+        if (c->mypstate == MYS_WAIT_CMD) {
             c->packet_seq = 0;
         }
     }
@@ -2214,7 +2214,7 @@ static int run_protocol(conn *c, int read, int written)
             fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
         update_conn_event(c, EV_READ | EV_PERSIST);
         c->mystate  = my_reading;
-        c->mypstate = mys_connect;
+        c->mypstate = MYS_CONNECT;
     case my_reading:
         /* If we've read the full packet size, we can write it to the
          * other guy
