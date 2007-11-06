@@ -172,17 +172,17 @@ static const luaL_Reg callback_m [] = {
 };
 
 static const obj_toreg regs [] = {
-    {"myp.conn", conn_regs, conn_m, NULL, NULL},
-    {"myp.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
-    {"myp.auth", auth_regs, generic_m, my_new_auth_packet, "new_auth_pkt"},
-    {"myp.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
-    {"myp.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
-    {"myp.cmd", cmd_regs, generic_m, my_new_cmd_packet, "new_cmd_pkt"},
-    {"myp.rset", rset_regs, generic_m, my_new_rset_packet, "new_rset_pkt"},
-    {"myp.field", field_regs, generic_m, my_new_field_packet, "new_field_pkt"},
-    {"myp.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
-    {"myp.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
-    {"myp.callback", callback_regs, callback_m, my_new_callback_object, "new_callback"},
+    {"dpm.conn", conn_regs, conn_m, NULL, NULL},
+    {"dpm.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
+    {"dpm.auth", auth_regs, generic_m, my_new_auth_packet, "new_auth_pkt"},
+    {"dpm.ok", ok_regs, generic_m, my_new_ok_packet, "new_ok_pkt"},
+    {"dpm.err", err_regs, generic_m, my_new_err_packet, "new_err_pkt"},
+    {"dpm.cmd", cmd_regs, generic_m, my_new_cmd_packet, "new_cmd_pkt"},
+    {"dpm.rset", rset_regs, generic_m, my_new_rset_packet, "new_rset_pkt"},
+    {"dpm.field", field_regs, generic_m, my_new_field_packet, "new_field_pkt"},
+    {"dpm.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
+    {"dpm.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
+    {"dpm.callback", callback_regs, callback_m, my_new_callback_object, "new_callback"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -277,7 +277,7 @@ static int obj_conn_package_register(lua_State *L, void *var, void *var2)
         return 0;
     }
 
-    o = luaL_checkudata(L, 2, "myp.callback");
+    o = luaL_checkudata(L, 2, "dpm.callback");
     c->package_callback = (*o)->callback;
     c->package_callback_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
@@ -448,7 +448,7 @@ static int obj_rset_field_count(lua_State *L, void *var, void *var2)
  */
 static int obj_rset_add_field(lua_State *L, void *var, void *var2)
 {
-    my_field_packet **f = luaL_checkudata(L, 2, "myp.field");
+    my_field_packet **f = luaL_checkudata(L, 2, "dpm.field");
     my_rset_packet *p   = var2;
     my_rset_field_header *new_fields;
 
@@ -508,7 +508,7 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
     size_t len;
 
     /* The top of the stack should be a row object to stuff data into. */
-    my_row_packet **row = luaL_checkudata(L, 2, "myp.row");
+    my_row_packet **row = luaL_checkudata(L, 2, "dpm.row");
 
     /* The rest should be the fields in the row. Make sure the number of args
      * left == the fields_total.
@@ -561,7 +561,7 @@ static int obj_rset_pack_row(lua_State *L, void *var, void *var2)
 /* Should we define the magic value here? Boring. 0 is array, 1 is table. */
 static int _rset_parse_data(my_rset_packet *rset, int type)
 {
-    my_row_packet **row   = luaL_checkudata(L, 2, "myp.row");
+    my_row_packet **row   = luaL_checkudata(L, 2, "dpm.row");
     unsigned int i;
     int base = 0;
     const char *rdata, *end;
@@ -903,102 +903,102 @@ static int obj_index(lua_State *L)
 int register_obj_defines(lua_State *L)
 {
 
-#define MYP_D(x) \
+#define DPM_D(x) \
     lua_pushinteger(L, x); \
     lua_setfield(L, -2, #x);
 
     /* Proxy internal defines. */
 
-    MYP_D(MY_SERVER);
-    MYP_D(MY_CLIENT);
+    DPM_D(MY_SERVER);
+    DPM_D(MY_CLIENT);
 
-    MYP_D(MYP_OK);
-    MYP_D(MYP_NOPROXY);
-    MYP_D(MYP_FLUSH_DISCONNECT);
+    DPM_D(DPM_OK);
+    DPM_D(DPM_NOPROXY);
+    DPM_D(DPM_FLUSH_DISCONNECT);
 
     /* State fields. */
-    MYP_D(MYS_CONNECT)
-    MYP_D(MYC_CONNECT)
-    MYP_D(MYS_SENT_HANDSHAKE)
-    MYP_D(MYC_WAIT_HANDSHAKE)
-    MYP_D(MYC_WAITING)
-    MYP_D(MYS_WAITING)
-    MYP_D(MYC_SENT_CMD)
-    MYP_D(MYS_SENDING_FIELDS)
-    MYP_D(MYS_SENDING_ROWS)
-    MYP_D(MYS_WAIT_AUTH)
-    MYP_D(MYS_SENDING_OK)
-    MYP_D(MYS_WAIT_CMD)
-    MYP_D(MYS_SENDING_RSET)
-    MYP_D(MYC_WAIT_AUTH)
-    MYP_D(MYS_SENDING_HANDSHAKE)
-    MYP_D(MYS_RECV_ERR)
-    MYP_D(MY_CLOSING)
-    MYP_D(MYS_SENDING_STATS)
-    MYP_D(MYS_GOT_CMD)
-    MYP_D(MYS_SENDING_EOF)
-    MYP_D(MYS_SENT_RSET)
-    MYP_D(MYS_SENT_FIELDS)
+    DPM_D(MYS_CONNECT)
+    DPM_D(MYC_CONNECT)
+    DPM_D(MYS_SENT_HANDSHAKE)
+    DPM_D(MYC_WAIT_HANDSHAKE)
+    DPM_D(MYC_WAITING)
+    DPM_D(MYS_WAITING)
+    DPM_D(MYC_SENT_CMD)
+    DPM_D(MYS_SENDING_FIELDS)
+    DPM_D(MYS_SENDING_ROWS)
+    DPM_D(MYS_WAIT_AUTH)
+    DPM_D(MYS_SENDING_OK)
+    DPM_D(MYS_WAIT_CMD)
+    DPM_D(MYS_SENDING_RSET)
+    DPM_D(MYC_WAIT_AUTH)
+    DPM_D(MYS_SENDING_HANDSHAKE)
+    DPM_D(MYS_RECV_ERR)
+    DPM_D(MY_CLOSING)
+    DPM_D(MYS_SENDING_STATS)
+    DPM_D(MYS_GOT_CMD)
+    DPM_D(MYS_SENDING_EOF)
+    DPM_D(MYS_SENT_RSET)
+    DPM_D(MYS_SENT_FIELDS)
 
     /* MySQL Protocol layer defines. */
 
-    MYP_D(COM_SLEEP);
-    MYP_D(COM_QUIT);
-    MYP_D(COM_INIT_DB);
-    MYP_D(COM_QUERY);
-    MYP_D(COM_FIELD_LIST);
-    MYP_D(COM_CREATE_DB);
-    MYP_D(COM_DROP_DB);
-    MYP_D(COM_REFRESH);
-    MYP_D(COM_SHUTDOWN);
-    MYP_D(COM_STATISTICS);
-    MYP_D(COM_PROCESS_INFO);
-    MYP_D(COM_CONNECT);
-    MYP_D(COM_PROCESS_KILL);
-    MYP_D(COM_DEBUG);
-    MYP_D(COM_PING);
-    MYP_D(COM_TIME);
-    MYP_D(COM_DELAYED_INSERT);
-    MYP_D(COM_CHANGE_USER);
-    MYP_D(COM_BINLOG_DUMP);
-    MYP_D(COM_TABLE_DUMP);
-    MYP_D(COM_CONNECT_OUT);
-    MYP_D(COM_REGISTER_SLAVE);
-    MYP_D(COM_STMT_PREPARE);
-    MYP_D(COM_STMT_EXECUTE);
-    MYP_D(COM_STMT_SEND_LONG_DATA);
-    MYP_D(COM_STMT_CLOSE);
-    MYP_D(COM_STMT_RESET);
-    MYP_D(COM_SET_OPTION);
-    MYP_D(COM_STMT_FETCH);
-    MYP_D(COM_DAEMON);
+    DPM_D(COM_SLEEP);
+    DPM_D(COM_QUIT);
+    DPM_D(COM_INIT_DB);
+    DPM_D(COM_QUERY);
+    DPM_D(COM_FIELD_LIST);
+    DPM_D(COM_CREATE_DB);
+    DPM_D(COM_DROP_DB);
+    DPM_D(COM_REFRESH);
+    DPM_D(COM_SHUTDOWN);
+    DPM_D(COM_STATISTICS);
+    DPM_D(COM_PROCESS_INFO);
+    DPM_D(COM_CONNECT);
+    DPM_D(COM_PROCESS_KILL);
+    DPM_D(COM_DEBUG);
+    DPM_D(COM_PING);
+    DPM_D(COM_TIME);
+    DPM_D(COM_DELAYED_INSERT);
+    DPM_D(COM_CHANGE_USER);
+    DPM_D(COM_BINLOG_DUMP);
+    DPM_D(COM_TABLE_DUMP);
+    DPM_D(COM_CONNECT_OUT);
+    DPM_D(COM_REGISTER_SLAVE);
+    DPM_D(COM_STMT_PREPARE);
+    DPM_D(COM_STMT_EXECUTE);
+    DPM_D(COM_STMT_SEND_LONG_DATA);
+    DPM_D(COM_STMT_CLOSE);
+    DPM_D(COM_STMT_RESET);
+    DPM_D(COM_SET_OPTION);
+    DPM_D(COM_STMT_FETCH);
+    DPM_D(COM_DAEMON);
 
-    MYP_D(MYSQL_TYPE_DECIMAL);
-    MYP_D(MYSQL_TYPE_NEWDECIMAL);
-    MYP_D(MYSQL_TYPE_TINY);
-    MYP_D(MYSQL_TYPE_SHORT);
-    MYP_D(MYSQL_TYPE_LONG);
-    MYP_D(MYSQL_TYPE_FLOAT);
-    MYP_D(MYSQL_TYPE_DOUBLE);
-    MYP_D(MYSQL_TYPE_NULL);
-    MYP_D(MYSQL_TYPE_TIMESTAMP);
-    MYP_D(MYSQL_TYPE_LONGLONG);
-    MYP_D(MYSQL_TYPE_INT24);
-    MYP_D(MYSQL_TYPE_DATE);
-    MYP_D(MYSQL_TYPE_TIME);
-    MYP_D(MYSQL_TYPE_DATETIME);
-    MYP_D(MYSQL_TYPE_YEAR);
-    MYP_D(MYSQL_TYPE_NEWDATE);
-    MYP_D(MYSQL_TYPE_ENUM);
-    MYP_D(MYSQL_TYPE_SET);
-    MYP_D(MYSQL_TYPE_TINY_BLOB);
-    MYP_D(MYSQL_TYPE_MEDIUM_BLOB);
-    MYP_D(MYSQL_TYPE_LONG_BLOB);
-    MYP_D(MYSQL_TYPE_BLOB);
-    MYP_D(MYSQL_TYPE_VAR_STRING);
-    MYP_D(MYSQL_TYPE_STRING);
-    MYP_D(MYSQL_TYPE_GEOMETRY);
-    MYP_D(MYSQL_TYPE_BIT);
+    DPM_D(MYSQL_TYPE_DECIMAL);
+    DPM_D(MYSQL_TYPE_NEWDECIMAL);
+    DPM_D(MYSQL_TYPE_TINY);
+    DPM_D(MYSQL_TYPE_SHORT);
+    DPM_D(MYSQL_TYPE_LONG);
+    DPM_D(MYSQL_TYPE_FLOAT);
+    DPM_D(MYSQL_TYPE_DOUBLE);
+    DPM_D(MYSQL_TYPE_NULL);
+    DPM_D(MYSQL_TYPE_TIMESTAMP);
+    DPM_D(MYSQL_TYPE_LONGLONG);
+    DPM_D(MYSQL_TYPE_INT24);
+    DPM_D(MYSQL_TYPE_DATE);
+    DPM_D(MYSQL_TYPE_TIME);
+    DPM_D(MYSQL_TYPE_DATETIME);
+    DPM_D(MYSQL_TYPE_YEAR);
+    DPM_D(MYSQL_TYPE_NEWDATE);
+    DPM_D(MYSQL_TYPE_ENUM);
+    DPM_D(MYSQL_TYPE_SET);
+    DPM_D(MYSQL_TYPE_TINY_BLOB);
+    DPM_D(MYSQL_TYPE_MEDIUM_BLOB);
+    DPM_D(MYSQL_TYPE_LONG_BLOB);
+    DPM_D(MYSQL_TYPE_BLOB);
+    DPM_D(MYSQL_TYPE_VAR_STRING);
+    DPM_D(MYSQL_TYPE_STRING);
+    DPM_D(MYSQL_TYPE_GEOMETRY);
+    DPM_D(MYSQL_TYPE_BIT);
 
     return 1;
 }

@@ -29,7 +29,7 @@ function client_closing(cid)
     -- Disconnect the backend conn from mysql.
     local backend = conns[client:remote_id()]
     if backend then
-        if myp.close(backend) then
+        if dpm.close(backend) then
             print "Successfully closed dead client's backend"
         end
     end
@@ -39,19 +39,19 @@ function new_client(c)
     print("New client connecting: " .. c:id())
     -- "c" is a new listening connection object.
     conns[c:id()] = c -- Prevent client from being garbage collected
-    c:register(myp.MYC_SENT_CMD, new_command);
-    c:register(myp.MY_CLOSING, client_closing);
+    c:register(dpm.MYC_SENT_CMD, new_command);
+    c:register(dpm.MY_CLOSING, client_closing);
 
     -- Init a backend just for this connection.
     local backend = new_backend(0)
     conns[backend:id()] = backend
 
     -- Connect the backend to the client (and never disconnect later).
-    myp.proxy_connect(c, backend)
+    dpm.proxy_connect(c, backend)
     -- This is a special case:
     -- When a client connects we don't send it a packet. Wait for the backend
     -- to proxy one along.
-    return myp.MYP_NOPROXY
+    return dpm.DPM_NOPROXY
 end
 
 function new_command(cmd_pkt, cid)
@@ -63,9 +63,9 @@ function new_command(cmd_pkt, cid)
         print "Rewriting packet to SELECT 1 + 1"
         cmd_pkt:argument("SELECT 1 + 1")
         -- Packet has been rewritten. Attach the backend and wire it.
-        myp.wire_packet(conns[client:remote_id()], cmd_pkt)
+        dpm.wire_packet(conns[client:remote_id()], cmd_pkt)
         -- Finally, return requesting to not proxy original packet.
-        return myp.MYP_NOPROXY
+        return dpm.DPM_NOPROXY
    end
 end
 
@@ -79,7 +79,7 @@ function backend_death(cid)
     conns[cid] = nil
     local client = conns[backend:remote_id()]
     if client then
-        if myp.close(client) then
+        if dpm.close(client) then
             print "Successfully closed backend's client"
         end
     end
@@ -87,11 +87,11 @@ end
 
 function new_backend(cid)
     -- Create new connection.
-    local backend = myp.connect("127.0.0.1", 3306)
-    backend:register(myp.MY_CLOSING, backend_death)
+    local backend = dpm.connect("127.0.0.1", 3306)
+    backend:register(dpm.MY_CLOSING, backend_death)
     return backend
 end
 
 -- Set up the listener, register a callback for new clients.
-listen = myp.listener("127.0.0.1", 5500)
-listen:register(myp.MYC_CONNECT, new_client)
+listen = dpm.listener("127.0.0.1", 5500)
+listen:register(dpm.MYC_CONNECT, new_client)

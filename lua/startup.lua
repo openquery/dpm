@@ -18,10 +18,10 @@
 -- Hello-world style initialization script for proxy.
 -- See bottom of file for connection, listening information.
 
--- MYP_OK (default)      packet was handled, and okay to send packet onward.
--- MYP_NOPROXY           assume packet was handled earlier, don't send
+-- DPM_OK (default)      packet was handled, and okay to send packet onward.
+-- DPM_NOPROXY           assume packet was handled earlier, don't send
 --                       original packet.
--- MYP_FLUSH_DISCONNECT  Flush packet on wire and disconnect clients
+-- DPM_FLUSH_DISCONNECT  Flush packet on wire and disconnect clients
 
 clients  = {}
 storage  = {}
@@ -34,9 +34,9 @@ function client_ok(cid)
     print("Client ready! id: " .. cid)
     -- Wipe any crazy callbacks. Act as a passthrough.
     local client = clients[cid]
-    client:register(myp.MYC_WAITING, nil)
-    client:register(myp.MYC_SENT_CMD, new_command)
-    client:register(myp.MY_CLOSING, client_closing)
+    client:register(dpm.MYC_WAITING, nil)
+    client:register(dpm.MYC_SENT_CMD, new_command)
+    client:register(dpm.MY_CLOSING, client_closing)
 end
 
 -- Client just got lost. Wipe callbacks, client table.
@@ -47,21 +47,21 @@ end
 
 function client_got_auth(auth_pkt, cid)
     local hs_pkt = storage[cid]
-    if (passdb[auth_pkt:user()] and myp.check_pass(auth_pkt, hs_pkt, passdb[auth_pkt:user()]) == 0) then
+    if (passdb[auth_pkt:user()] and dpm.check_pass(auth_pkt, hs_pkt, passdb[auth_pkt:user()]) == 0) then
         print "Passwords matched!"
-        local ok_pkt = myp.new_ok_pkt()
+        local ok_pkt = dpm.new_ok_pkt()
         -- FIXME: Prior to this stage "Client waiting" should mean "Client got
         -- auth"
         local client = clients[cid]
-        client:register(myp.MYC_WAITING, client_ok)
-        myp.wire_packet(clients[cid], ok_pkt)
+        client:register(dpm.MYC_WAITING, client_ok)
+        dpm.wire_packet(clients[cid], ok_pkt)
     else
         print "Passwords did NOT match!"
-        local err_pkt = myp.new_err_pkt()
+        local err_pkt = dpm.new_err_pkt()
         err_pkt:sqlstate("28000")
         err_pkt:errnum(1045)
         err_pkt:message("Access denied for user '" .. auth_pkt:user() .. "'@'whatever'")
-        myp.wire_packet(clients[cid], err_pkt)
+        dpm.wire_packet(clients[cid], err_pkt)
     end
 
     storage[cid] = nil
@@ -71,35 +71,35 @@ function new_client(c)
     -- "c" is a new listening connection object.
     print("It's a new client! id: " .. c:id())
     clients[c:id()] = c -- Prevent client from being garbage collected
-    c:register(myp.MYC_WAITING, client_got_auth)
+    c:register(dpm.MYC_WAITING, client_got_auth)
 
     -- Handshake packets are pre-generated close to how we want it.
     -- An exersize for the reader would be to tailor this a little based on
     -- the handshake packet supplied by the backend server!
-    local hs_pkt = myp.new_handshake_pkt()
-    myp.wire_packet(c, hs_pkt)
+    local hs_pkt = dpm.new_handshake_pkt()
+    dpm.wire_packet(c, hs_pkt)
     storage[c:id()] = hs_pkt
 end
 
 function new_command(cmd_pkt, cid)
     print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
-    if (cmd_pkt:command() == myp.COM_QUIT) then
+    if (cmd_pkt:command() == dpm.COM_QUIT) then
         -- allow the client to close, but don't close the server.
-        return myp.MYP_NOPROXY
+        return dpm.DPM_NOPROXY
     end
-    myp.proxy_connect(clients[cid], backend)
+    dpm.proxy_connect(clients[cid], backend)
     if (cmd_pkt:argument() == "HELLO") then
         cmd_pkt:argument("SELECT 1 + 1")
         -- Packet has been rewritten. Attach the backend and wire it.
-        myp.wire_packet(backend, cmd_pkt)
+        dpm.wire_packet(backend, cmd_pkt)
         -- Finally, return requesting to not proxy original packet.
-        return myp.MYP_NOPROXY
+        return dpm.DPM_NOPROXY
    end
 end
 
 function finished_command(cid)
     print "Backend completed handling command."
-    return myp.MYP_FLUSH_DISCONNECT
+    return dpm.DPM_FLUSH_DISCONNECT
 end
 
 function server_err(err_pkt, cid)
@@ -108,23 +108,23 @@ end
 
 function server_ready(ok_pkt, cid)
     print("Backend ready!")
-    backend:register(myp.MYS_WAIT_CMD, finished_command)
-    backend:register(myp.MYS_RECV_ERR, finished_command)
-    backend:register(myp.MY_CLOSING, new_backend)
+    backend:register(dpm.MYS_WAIT_CMD, finished_command)
+    backend:register(dpm.MYS_RECV_ERR, finished_command)
+    backend:register(dpm.MY_CLOSING, new_backend)
 end
 
 function server_handshake(hs_pkt, cid)
     print("Got handshake from server, sending auth")
 
-    local auth_pkt = myp.new_auth_pkt()
+    local auth_pkt = dpm.new_auth_pkt()
     auth_pkt:user(BACKEND_USERNAME)
-    myp.crypt_pass(auth_pkt, hs_pkt, BACKEND_PASSWORD)
+    dpm.crypt_pass(auth_pkt, hs_pkt, BACKEND_PASSWORD)
 
-    myp.wire_packet(backend, auth_pkt)
+    dpm.wire_packet(backend, auth_pkt)
     -- Don't need to store anything, server will return 'ok' or 'err' packet.
-    backend:register(myp.MYS_WAIT_CMD, server_ready)
-    backend:register(myp.MYS_RECV_ERR, server_err)
-    backend:register(myp.MY_CLOSING, new_backend)
+    backend:register(dpm.MYS_WAIT_CMD, server_ready)
+    backend:register(dpm.MYS_RECV_ERR, server_err)
+    backend:register(dpm.MY_CLOSING, new_backend)
 end
 
 -- TODO: This should sleep.
@@ -137,13 +137,13 @@ function new_backend(cid)
     end
 
     -- Then create new connection.
-    backend = myp.connect("127.0.0.1", 3306)
-    backend:register(myp.MYS_WAIT_AUTH, server_handshake)
+    backend = dpm.connect("127.0.0.1", 3306)
+    backend:register(dpm.MYS_WAIT_AUTH, server_handshake)
 end
 
 -- Set up the listener, register a callback for new clients.
-listen = myp.listener("127.0.0.1", 5500)
-listen:register(myp.MYC_CONNECT, new_client)
+listen = dpm.listener("127.0.0.1", 5500)
+listen:register(dpm.MYC_CONNECT, new_client)
 
 -- Fire off the backend. NOTE that this won't retry or event print decent
 -- errors if it fails :)

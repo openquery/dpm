@@ -191,25 +191,25 @@ enum myconn_states {
     my_connect, /* Attempting to connect to a remote socket */
 };
 
-enum mypacket_types {
-    myp_none, /* No packet/error */
-    myp_handshake,
-    myp_auth,
-    myp_ok,
-    myp_cmd,
-    myp_err,
-    myp_rset,
-    myp_field,
-    myp_row,
-    myp_eof,
-    myp_stats,
+enum dpm_packet_types {
+    dpm_none, /* No packet/error */
+    dpm_handshake,
+    dpm_auth,
+    dpm_ok,
+    dpm_cmd,
+    dpm_err,
+    dpm_rset,
+    dpm_field,
+    dpm_row,
+    dpm_eof,
+    dpm_stats,
 };
 
 /* This enum is to help transition off of the lowercase style.
  * Lets define both for now, update everything over a few commits, then remove
  * the old one.
  */
-enum myproto_states {
+enum dpm_proto_states {
     MYS_CONNECT,
     MYC_CONNECT,
     MYS_SENT_HANDSHAKE,
@@ -242,13 +242,13 @@ enum my_types {
     MY_CLIENT, /* Conn is a client connection */
 };
 
-#define MYP_OK 0
-#define MYP_NOPROXY 1
-#define MYP_FLUSH_DISCONNECT 2
+#define DPM_OK 0
+#define DPM_NOPROXY 1
+#define DPM_FLUSH_DISCONNECT 2
 
 #define CALLBACK_AVAILABLE(c) \
-( (c->package_callback != NULL && c->package_callback[c->mypstate] != 0) \
-? c->package_callback[c->mypstate] : c->main_callback[c->mypstate] )
+( (c->package_callback != NULL && c->package_callback[c->dpmstate] != 0) \
+? c->package_callback[c->dpmstate] : c->main_callback[c->dpmstate] )
 
 /* Structs... */
 typedef struct {
@@ -270,7 +270,7 @@ typedef struct {
 
     /* mysql protocol specific junk */ 
     int    mystate;  /* Connection state */
-    int    mypstate; /* Packet state */
+    int    dpmstate; /* Packet state */
     uint8_t my_type; /* Type of *remote* end of this connection */
     int    packetsize;
     uint64_t field_count; /* Number of field packets expected. */

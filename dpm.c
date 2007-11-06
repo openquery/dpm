@@ -241,7 +241,7 @@ static void handle_close(conn *c)
     conn *remote;
     assert(c != 0);
 
-    c->mypstate = MY_CLOSING;
+    c->dpmstate = MY_CLOSING;
     run_lua_callback(c, 0);
     event_del(&c->ev);
 
@@ -411,7 +411,7 @@ static conn *init_conn(int newfd)
     newc->id = my_connection_counter++;
     newc->ev_flags = EV_READ | EV_PERSIST;
     newc->mystate = my_reading;
-    newc->mypstate = my_waiting;
+    newc->dpmstate = my_waiting;
 
     /* Misc inits, for clarity. */
     newc->read        = 0;
@@ -476,14 +476,14 @@ static void handle_event(int fd, short event, void *arg)
         if (newc == NULL)
             return;
 
-        newc->mypstate  = MYC_WAIT_HANDSHAKE;
+        newc->dpmstate  = MYC_WAIT_HANDSHAKE;
         newc->my_type   = MY_CLIENT;
         newc->alive++;
 
         /* Pass the object up into lua for later inspection. */
-        new_obj(L, newc, "myp.conn");
+        new_obj(L, newc, "dpm.conn");
 
-        c->mypstate = MYC_CONNECT;
+        c->dpmstate = MYC_CONNECT;
         run_lua_callback(c, 1);
 
         /* The callback might've written packets to the wire. */
@@ -810,7 +810,7 @@ void *my_new_handshake_packet()
     }
     memset(p, 0, sizeof(my_handshake_packet));
 
-    p->h.ptype   = myp_handshake;
+    p->h.ptype   = dpm_handshake;
     p->h.free_me = my_free_handshake_packet;
     p->h.to_buf  = my_wire_handshake_packet;
     p->protocol_version = 10; /* FIXME: Should be a define? */
@@ -848,7 +848,7 @@ static void *my_consume_handshake_packet(conn *c)
     }
     memset(p, 0, sizeof(my_handshake_packet));
 
-    p->h.ptype   = myp_handshake;
+    p->h.ptype   = dpm_handshake;
     p->h.free_me = my_free_handshake_packet;
     p->h.to_buf  = my_wire_handshake_packet;
 
@@ -907,7 +907,7 @@ static void *my_consume_handshake_packet(conn *c)
     memcpy(&p->scramble_buff[8], &c->rbuf[base], 13);
     base += 13;
 
-    new_obj(L, p, "myp.handshake");
+    new_obj(L, p, "dpm.handshake");
 
     return p;
 }
@@ -932,7 +932,7 @@ void *my_new_auth_packet()
     }
     memset(p, 0, sizeof(my_auth_packet));
 
-    p->h.ptype   = myp_auth;
+    p->h.ptype   = dpm_auth;
     p->h.free_me = my_free_auth_packet;
     p->h.to_buf  = my_wire_auth_packet;
 
@@ -1019,7 +1019,7 @@ static void *my_consume_auth_packet(conn *c)
     }
     memset(p, 0, sizeof(my_auth_packet));
 
-    p->h.ptype   = myp_auth;
+    p->h.ptype   = dpm_auth;
     p->h.free_me = my_free_auth_packet;
     p->h.to_buf  = my_wire_auth_packet;
 
@@ -1079,7 +1079,7 @@ static void *my_consume_auth_packet(conn *c)
         base += my_size + 1;
     }
 
-    new_obj(L, p, "myp.auth");
+    new_obj(L, p, "dpm.auth");
 
     return p;
 }
@@ -1105,7 +1105,7 @@ void *my_new_ok_packet()
     }
     memset(p, 0, sizeof(my_ok_packet));
 
-    p->h.ptype   = myp_ok;
+    p->h.ptype   = dpm_ok;
     p->h.free_me = my_free_ok_packet;
     p->h.to_buf  = my_wire_ok_packet;
 
@@ -1174,7 +1174,7 @@ static void *my_consume_ok_packet(conn *c)
     }
     memset(p, 0, sizeof(my_ok_packet));
 
-    p->h.ptype = myp_ok;
+    p->h.ptype = dpm_ok;
     p->h.free_me = my_free_ok_packet;
     p->h.to_buf  = my_wire_ok_packet;
 
@@ -1200,7 +1200,7 @@ static void *my_consume_ok_packet(conn *c)
         p->message = NULL;
     }
 
-    new_obj(L, p, "myp.ok");
+    new_obj(L, p, "dpm.ok");
 
     return p;
 }
@@ -1222,7 +1222,7 @@ void *my_new_err_packet()
     }
     memset(p, 0, sizeof(my_err_packet));
 
-    p->h.ptype = myp_err;
+    p->h.ptype = dpm_err;
     p->h.free_me = my_free_err_packet;
     p->h.to_buf = my_wire_err_packet;
 
@@ -1290,7 +1290,7 @@ static void *my_consume_err_packet(conn *c)
     }
     memset(p, 0, sizeof(my_err_packet));
 
-    p->h.ptype = myp_err;
+    p->h.ptype = dpm_err;
     p->h.free_me = my_free_err_packet;
     p->h.to_buf = my_wire_err_packet;
 
@@ -1323,7 +1323,7 @@ static void *my_consume_err_packet(conn *c)
     memcpy(p->message, &c->rbuf[base], my_size);
     p->message[my_size] = '\0';
 
-    new_obj(L, p, "myp.err");
+    new_obj(L, p, "dpm.err");
 
     return p;
 }
@@ -1340,7 +1340,7 @@ void *my_new_cmd_packet()
     }
     memset(p, 0, sizeof(my_cmd_packet));
 
-    p->h.ptype   = myp_cmd;
+    p->h.ptype   = dpm_cmd;
     p->h.free_me = my_free_cmd_packet;
     p->h.to_buf  = my_wire_cmd_packet;
 
@@ -1420,7 +1420,7 @@ static void *my_consume_cmd_packet(conn *c)
     }
     memset(p, 0, sizeof(my_cmd_packet));
 
-    p->h.ptype   = myp_cmd;
+    p->h.ptype   = dpm_cmd;
     p->h.free_me = my_free_cmd_packet;
     p->h.to_buf  = my_wire_cmd_packet;
 
@@ -1437,7 +1437,7 @@ static void *my_consume_cmd_packet(conn *c)
     memcpy(p->argument, &c->rbuf[base], my_size);
     p->argument[my_size] = '\0';
 
-    new_obj(L, p, "myp.cmd");
+    new_obj(L, p, "dpm.cmd");
 
     return p;
 }
@@ -1453,7 +1453,7 @@ void *my_new_rset_packet()
     }
     memset(p, 0, sizeof(my_rset_packet));
 
-    p->h.ptype   = myp_rset;
+    p->h.ptype   = dpm_rset;
     p->h.free_me = my_free_rset_packet;
     p->h.to_buf  = my_wire_rset_packet;
 
@@ -1485,7 +1485,7 @@ static void *my_consume_rset_packet(conn *c)
     }
     memset(p, 0, sizeof(my_rset_packet));
 
-    p->h.ptype   = myp_rset;
+    p->h.ptype   = dpm_rset;
     p->h.free_me = my_free_rset_packet;
     p->h.to_buf  = my_wire_rset_packet;
 
@@ -1502,7 +1502,7 @@ static void *my_consume_rset_packet(conn *c)
         return NULL;
     }
 
-    new_obj(L, p, "myp.rset");
+    new_obj(L, p, "dpm.rset");
 
     return p;
 }
@@ -1545,7 +1545,7 @@ void *my_new_field_packet()
     }
     memset(p, 0, sizeof(my_field_packet));
 
-    p->h.ptype   = myp_field;
+    p->h.ptype   = dpm_field;
     p->h.free_me = my_free_field_packet;
     p->h.to_buf  = my_wire_field_packet;
 
@@ -1581,7 +1581,7 @@ static void *my_consume_field_packet(conn *c)
     }
     memset(p, 0, sizeof(my_field_packet));
 
-    p->h.ptype   = myp_field;
+    p->h.ptype   = dpm_field;
     p->h.free_me = my_free_field_packet;
     p->h.to_buf  = my_wire_field_packet;
 
@@ -1672,7 +1672,7 @@ static void *my_consume_field_packet(conn *c)
         p->has_default++;
     }
 
-    new_obj(L, p, "myp.field");
+    new_obj(L, p, "dpm.field");
 
     return p;
 }
@@ -1776,7 +1776,7 @@ void *my_new_row_packet()
     }
     memset(p, 0, sizeof(my_row_packet));
 
-    p->h.ptype   = myp_row;
+    p->h.ptype   = dpm_row;
     p->h.free_me = my_free_row_packet;
     p->h.to_buf  = my_wire_row_packet;
 
@@ -1803,7 +1803,7 @@ static void *my_consume_row_packet(conn *c)
     }
     memset(p, 0, sizeof(my_row_packet));
 
-    p->h.ptype   = myp_row;
+    p->h.ptype   = dpm_row;
     p->h.free_me = my_free_row_packet;
     p->h.to_buf  = my_wire_row_packet;
 
@@ -1814,7 +1814,7 @@ static void *my_consume_row_packet(conn *c)
     lua_pushlstring(L, (const char *) &c->rbuf[base], c->packetsize - 4);
     p->packed_row_lref = luaL_ref(L, LUA_REGISTRYINDEX);
 
-    new_obj(L, p, "myp.row");
+    new_obj(L, p, "dpm.row");
 
     return p;
 }
@@ -1892,7 +1892,7 @@ static void *my_consume_eof_packet(conn *c)
     }
     memset(p, 0, sizeof(my_eof_packet));
 
-    p->h.ptype   = myp_eof;
+    p->h.ptype   = dpm_eof;
     p->h.free_me = my_free_eof_packet;
     p->h.to_buf  = my_wire_eof_packet;
 
@@ -1905,7 +1905,7 @@ static void *my_consume_eof_packet(conn *c)
     p->server_status= uint2korr(&c->rbuf[base]);
     base += 2;
 
-    new_obj(L, p, "myp.eof");
+    new_obj(L, p, "dpm.eof");
 
     return p;
 }
@@ -1921,7 +1921,7 @@ void *my_new_eof_packet()
     }
     memset(p, 0, sizeof(my_eof_packet));
 
-    p->h.ptype   = myp_eof;
+    p->h.ptype   = dpm_eof;
     p->h.free_me = my_free_eof_packet;
     p->h.to_buf  = my_wire_eof_packet;
 
@@ -1943,7 +1943,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     int ret = 0;
 
     #ifdef DBUG
-    fprintf(stdout, "TX START State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "TX START State: %s\n", my_state_name[c->dpmstate]);
     #endif
     /* This might be overridden during processing, so increase it up here */
     c->packet_seq++;
@@ -1955,35 +1955,35 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
          * just sent. We can add state tracking in the future so you can write
          * clients from lua without going crazy and pulling out all your hair.
          */
-        switch (c->mypstate) {
+        switch (c->dpmstate) {
         case MYC_SENT_CMD:
-            c->mypstate = MYC_WAITING; /* FIXME: Should be reading results */
+            c->dpmstate = MYC_WAITING; /* FIXME: Should be reading results */
             break;
         case MYC_WAIT_HANDSHAKE:
-            assert(ptype == myp_handshake);
-            c->mypstate = MYC_WAIT_AUTH;
+            assert(ptype == dpm_handshake);
+            c->dpmstate = MYC_WAIT_AUTH;
         }
         break;
     case MY_SERVER:
-        switch (c->mypstate) {
+        switch (c->dpmstate) {
         case MYS_WAIT_AUTH:
-            assert(ptype == myp_auth);
-            c->mypstate = MYS_SENDING_OK;
+            assert(ptype == dpm_auth);
+            c->dpmstate = MYS_SENDING_OK;
             break;
         case MYS_RECV_ERR:
         case MYS_WAIT_CMD:
-            assert(ptype == myp_cmd);
+            assert(ptype == dpm_cmd);
             {
             my_cmd_packet *cmd = (my_cmd_packet *)*p;
             c->last_cmd = cmd->command;
-            c->mypstate = MYS_GOT_CMD;
+            c->dpmstate = MYS_GOT_CMD;
             }
             break;
         }
     }
 
     #ifdef DBUG
-    fprintf(stdout, "TX END State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "TX END State: %s\n", my_state_name[c->dpmstate]);
     #endif
     if (CALLBACK_AVAILABLE(c)) {
         run_lua_callback(c, 0);
@@ -1992,7 +1992,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
 }
 
 /* If we received a packet, we don't necessarily know what it is.
- * So *p can be NULL and ptype can be 0 (myp_unknown).
+ * So *p can be NULL and ptype can be 0 (dpm_unknown).
  */
  /* NOTE: This means the packet was received _ON_ the wire for this conn */
 static int received_packet(conn *c, void **p, int *ptype, int field_count)
@@ -2000,7 +2000,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     int nargs = 0;
     pkt_func consumer = NULL;
     #ifdef DBUG
-    fprintf(stdout, "RX START State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "RX START State: %s\n", my_state_name[c->dpmstate]);
     #endif
 
     /* Default *p to NULL */
@@ -2011,17 +2011,17 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
 
     switch (c->my_type) {
     case MY_CLIENT:
-        switch (c->mypstate) {
+        switch (c->dpmstate) {
         case MYC_WAIT_AUTH:
             consumer = my_consume_auth_packet;
-            *ptype = myp_auth;
-            c->mypstate = MYC_WAITING;
+            *ptype = dpm_auth;
+            c->dpmstate = MYC_WAITING;
             break;
         case MYC_WAITING:
             /* command packets must always be consumed. */
             *p = my_consume_cmd_packet(c);
-            *ptype = myp_cmd;
-            c->mypstate = MYC_SENT_CMD;
+            *ptype = dpm_cmd;
+            c->dpmstate = MYC_SENT_CMD;
             /* Kick off the packet sequencer. */
             c->packet_seq = 1;
             nargs++;
@@ -2032,32 +2032,32 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         /* These are transition markers. The last of 'blah' was sent, so
          * start parsing something else.
          */
-        switch (c->mypstate) {
+        switch (c->dpmstate) {
             case MYS_SENT_RSET:
-                c->mypstate = MYS_SENDING_FIELDS;
+                c->dpmstate = MYS_SENDING_FIELDS;
                 break;
             case MYS_SENT_FIELDS:
-                c->mypstate = MYS_SENDING_ROWS;
+                c->dpmstate = MYS_SENDING_ROWS;
                 break;
         }
 
         /* If we were just sent a command, flip the state depending on the
          * command sent.
          */
-        if (c->mypstate == MYS_GOT_CMD) {
+        if (c->dpmstate == MYS_GOT_CMD) {
             switch (c->last_cmd) {
             case COM_QUERY:
-                c->mypstate = MYS_SENDING_RSET;
+                c->dpmstate = MYS_SENDING_RSET;
                 break;
             case COM_FIELD_LIST:
-                c->mypstate = MYS_SENDING_FIELDS;
+                c->dpmstate = MYS_SENDING_FIELDS;
                 break;
             case COM_INIT_DB:
             case COM_QUIT:
-                c->mypstate = MYS_SENDING_OK;
+                c->dpmstate = MYS_SENDING_OK;
                 break;
             case COM_STATISTICS:
-                c->mypstate = MYS_SENDING_STATS;
+                c->dpmstate = MYS_SENDING_STATS;
                 break;
             default:
                 fprintf(stdout, "***WARNING*** UNKNOWN PACKET RESULT SET FOR PACKET TYPE %d\n", c->last_cmd);
@@ -2066,21 +2066,21 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         }
 
         /* Primary packet consumption. */
-        switch (c->mypstate) {
+        switch (c->dpmstate) {
         case MYS_CONNECT:
             consumer = my_consume_handshake_packet;
-            *ptype = myp_handshake;
-            c->mypstate = MYS_WAIT_AUTH;
+            *ptype = dpm_handshake;
+            c->dpmstate = MYS_WAIT_AUTH;
             break;
         case MYS_SENDING_OK:
             switch (field_count) {
             case 0:
                 consumer = my_consume_ok_packet;
-                *ptype = myp_ok;
-                c->mypstate = MYS_WAIT_CMD;
+                *ptype = dpm_ok;
+                c->dpmstate = MYS_WAIT_CMD;
                 break;
             case 255:
-                *ptype = myp_err;
+                *ptype = dpm_err;
                 break;
             default:
                 /* Should never get here. */
@@ -2091,16 +2091,16 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
             switch (field_count) {
             case 0:
                 consumer = my_consume_ok_packet;
-                *ptype = myp_ok;
-                c->mypstate = MYS_WAIT_CMD;
+                *ptype = dpm_ok;
+                c->dpmstate = MYS_WAIT_CMD;
                 break;
             case 255:
-                *ptype = myp_err;
+                *ptype = dpm_err;
                 break;
             default:
                 consumer = my_consume_rset_packet;
-                *ptype = myp_rset;
-                c->mypstate = MYS_SENT_RSET;
+                *ptype = dpm_rset;
+                c->dpmstate = MYS_SENT_RSET;
             }
             break;
         case MYS_SENDING_FIELDS:
@@ -2110,23 +2110,23 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
                  * unless it's the right size to be an EOF as well */
                 if (c->packetsize < 10) {
                     consumer = my_consume_eof_packet;
-                    *ptype = myp_eof;
+                    *ptype = dpm_eof;
                     /* Can change this to another switch, or cuddle a flag under
                      * case 'MYS_WAIT_CMD', if it's really more complex.
                      */
                     if (c->last_cmd == COM_QUERY) {
-                        c->mypstate = MYS_SENT_FIELDS;
+                        c->dpmstate = MYS_SENT_FIELDS;
                     } else {
-                        c->mypstate = MYS_WAIT_CMD;
+                        c->dpmstate = MYS_WAIT_CMD;
                     }
                 break;
                 }
             case 255:
-                *ptype = myp_err;
+                *ptype = dpm_err;
                 break;
             default:
                 consumer = my_consume_field_packet;
-                *ptype = myp_field;
+                *ptype = dpm_field;
             }
             break;
         case MYS_SENDING_STATS:
@@ -2134,24 +2134,24 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
              * so you might as well just parse the stupid thing.
              */
             /* FIXME: consumer = my_consume_stats_packet; */
-            *ptype = myp_stats;
-            c->mypstate = MYS_WAIT_CMD;
+            *ptype = dpm_stats;
+            c->dpmstate = MYS_WAIT_CMD;
             break;
         case MYS_SENDING_ROWS:
             switch (field_count) {
             case 254:
                 if (c->packetsize < 10) {
                 consumer = my_consume_eof_packet;
-                *ptype = myp_eof;
-                c->mypstate = MYS_WAIT_CMD;
+                *ptype = dpm_eof;
+                c->dpmstate = MYS_WAIT_CMD;
                 break;
                 }
             case 255:
-                *ptype = myp_err;
+                *ptype = dpm_err;
                 break;
             default:
                 consumer = my_consume_row_packet;
-                *ptype = myp_row;
+                *ptype = dpm_row;
                 break;
             }
             break;
@@ -2164,13 +2164,13 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         }
 
         /* Read errors if we detected an error packet. */
-        if (*ptype == myp_err) {
+        if (*ptype == dpm_err) {
             consumer = my_consume_err_packet;
             c->packet_seq = 0;
-            c->mypstate = MYS_RECV_ERR;
+            c->dpmstate = MYS_RECV_ERR;
         }
 
-        if (c->mypstate == MYS_WAIT_CMD) {
+        if (c->dpmstate == MYS_WAIT_CMD) {
             c->packet_seq = 0;
         }
     }
@@ -2181,7 +2181,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     }
 
     #ifdef DBUG
-    fprintf(stdout, "RX END State: %s\n", my_state_name[c->mypstate]);
+    fprintf(stdout, "RX END State: %s\n", my_state_name[c->dpmstate]);
     #endif
     return nargs;
 }
@@ -2214,7 +2214,7 @@ static int run_protocol(conn *c, int read, int written)
             fprintf(stdout, "Successfully connected outbound socket %d\n", c->fd);
         update_conn_event(c, EV_READ | EV_PERSIST);
         c->mystate  = my_reading;
-        c->mypstate = MYS_CONNECT;
+        c->dpmstate = MYS_CONNECT;
     case my_reading:
         /* If we've read the full packet size, we can write it to the
          * other guy
@@ -2222,7 +2222,7 @@ static int run_protocol(conn *c, int read, int written)
          */
 
         while ( (next_packet = my_next_packet_start(c)) != -1 ) {
-            int ptype = myp_none;
+            int ptype = dpm_none;
             void *p = NULL;
             int ret = 0;
             int cbret = 0;
@@ -2243,7 +2243,7 @@ static int run_protocol(conn *c, int read, int written)
             }
 
             /* Handle writing to a remote if one exists */
-            if ( c->remote && ( cbret == MYP_OK || cbret == MYP_FLUSH_DISCONNECT ) ) {
+            if ( c->remote && ( cbret == DPM_OK || cbret == DPM_FLUSH_DISCONNECT ) ) {
                 remote = (conn *)c->remote;
                 if (grow_write_buffer(remote, remote->towrite + c->packetsize) == -1) {
                     return -1;
@@ -2258,7 +2258,7 @@ static int run_protocol(conn *c, int read, int written)
                 /* We track our own sequence, so overwrite what's there. */
                 int1store(&remote->wbuf[remote->towrite + 3], remote->packet_seq - 1);
                 remote->towrite += c->packetsize;
-            } else if ( c->remote && ( cbret == MYP_NOPROXY ) ) {
+            } else if ( c->remote && ( cbret == DPM_NOPROXY ) ) {
                 /* Condition to flush what was written, but don't proxy
                  * the last packet in the pipeline
                  */
@@ -2267,7 +2267,7 @@ static int run_protocol(conn *c, int read, int written)
             }
 
             /* Flush (above) and disconnect the conns */
-            if (remote && cbret == MYP_FLUSH_DISCONNECT) {
+            if (remote && cbret == DPM_FLUSH_DISCONNECT) {
                 remote->remote = NULL;
                 c->remote      = NULL;
             }
@@ -2306,12 +2306,12 @@ static int run_lua_callback(conn *c, int nargs)
     int cb;
 
     #ifdef DBUG
-    fprintf(stdout, "Running callback [%s] on conn id %llu\n", my_state_name[c->mypstate], (unsigned long long) c->id);
+    fprintf(stdout, "Running callback [%s] on conn id %llu\n", my_state_name[c->dpmstate], (unsigned long long) c->id);
     #endif
 
     /* If there's a package callback use it, else what's set for the conn. */
     /* Always handle MY_CLOSING from the connection level. */
-    if (c->mypstate == MY_CLOSING && c->main_callback[MY_CLOSING]) {
+    if (c->dpmstate == MY_CLOSING && c->main_callback[MY_CLOSING]) {
         cb = c->main_callback[MY_CLOSING];
     } else {
         cb = CALLBACK_AVAILABLE(c);
@@ -2340,7 +2340,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     /* Finally, call the function? Push some args too */
     if (lua_pcall(L, nargs, 1, 0) != 0) {
-        fprintf(stderr, "ERROR: running callback '%s': %s\n", my_state_name[c->mypstate], lua_tostring(L, -1));
+        fprintf(stderr, "ERROR: running callback '%s': %s\n", my_state_name[c->dpmstate], lua_tostring(L, -1));
         lua_pop(L, -1);
     }
 
@@ -2350,7 +2350,7 @@ static int run_lua_callback(conn *c, int nargs)
     } else {
         /* nil gets returned, since we expect one value. */
         lua_pop(L, 1);
-        ret = MYP_OK; /* Default to an R_OK response. */
+        ret = DPM_OK; /* Default to an R_OK response. */
     }
 
     return ret;
@@ -2361,7 +2361,7 @@ static int run_lua_callback(conn *c, int nargs)
  */
 static int close_conn(lua_State *L)
 {
-    conn **c = luaL_checkudata(L, 1, "myp.conn");
+    conn **c = luaL_checkudata(L, 1, "dpm.conn");
     lua_pop(L, 1);
 
     if ((*c)->alive == 0) {
@@ -2380,8 +2380,8 @@ static int close_conn(lua_State *L)
  */
 static int check_pass(lua_State *L)
 {
-    my_auth_packet **auth = (my_auth_packet **)luaL_checkudata(L, 1, "myp.auth");
-    my_handshake_packet **hs = (my_handshake_packet **)luaL_checkudata(L, 2, "myp.handshake");
+    my_auth_packet **auth = (my_auth_packet **)luaL_checkudata(L, 1, "dpm.auth");
+    my_handshake_packet **hs = (my_handshake_packet **)luaL_checkudata(L, 2, "dpm.handshake");
     const char *stored_pass = luaL_checkstring(L, 3);
 
     lua_pushinteger(L, my_check_scramble((*auth)->scramble_buff, (*hs)->scramble_buff, stored_pass));
@@ -2396,8 +2396,8 @@ static int check_pass(lua_State *L)
  */
 static int crypt_pass(lua_State *L)
 {
-    my_auth_packet **auth = (my_auth_packet **)luaL_checkudata(L, 1, "myp.auth");
-    my_handshake_packet **hs = (my_handshake_packet **)luaL_checkudata(L, 2, "myp.handshake");
+    my_auth_packet **auth = (my_auth_packet **)luaL_checkudata(L, 1, "dpm.auth");
+    my_handshake_packet **hs = (my_handshake_packet **)luaL_checkudata(L, 2, "dpm.handshake");
     const char *plain_pass = luaL_checkstring(L, 3);
 
     /* Encrypt the password into the authentication packet. */
@@ -2409,8 +2409,8 @@ static int crypt_pass(lua_State *L)
 /* LUA command for attaching a client with a backend. */
 static int proxy_connect(lua_State *L)
 {
-    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
-    conn **r = (conn **)luaL_checkudata(L, 2, "myp.conn");
+    conn **c = (conn **)luaL_checkudata(L, 1, "dpm.conn");
+    conn **r = (conn **)luaL_checkudata(L, 2, "dpm.conn");
 
     if ((*c)->my_type != MY_CLIENT || (*c)->alive == 0) {
         luaL_error(L, "Arg 1 must be a valid client");
@@ -2430,7 +2430,7 @@ static int proxy_connect(lua_State *L)
 /* LUA command for detaching a client and backend. */
 static int proxy_disconnect(lua_State *L)
 {
-    conn **c = (conn **)luaL_checkudata(L, 1, "myp.conn");
+    conn **c = (conn **)luaL_checkudata(L, 1, "dpm.conn");
     conn *r = NULL;
 
     if (!(*c)->remote) {
@@ -2450,7 +2450,7 @@ static int proxy_disconnect(lua_State *L)
 /* LUA command for wiring a packet into a connection. */
 static int wire_packet(lua_State *L)
 {
-    conn **c = luaL_checkudata(L, 1, "myp.conn");
+    conn **c = luaL_checkudata(L, 1, "dpm.conn");
     my_packet_fuzz **p;
 
     if (!(*c)->alive)
@@ -2510,7 +2510,7 @@ static int new_connect(lua_State *L)
     /* We watch for a write to this guy to see if it succeeds */
     add_conn_event(c, EV_WRITE);
 
-    new_obj(L, c, "myp.conn");
+    new_obj(L, c, "dpm.conn");
 
     return 1;
 }
@@ -2560,7 +2560,7 @@ static int new_listener(lua_State *L)
     event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
     event_add(&listener->ev, NULL);
 
-    new_obj(L, listener, "myp.conn");
+    new_obj(L, listener, "dpm.conn");
 
     return 1;
 }
@@ -2568,7 +2568,7 @@ static int new_listener(lua_State *L)
 int main (int argc, char **argv)
 {
     struct sigaction sa;
-    static const struct luaL_Reg myp [] = {
+    static const struct luaL_Reg dpm [] = {
         {"listener", new_listener},
         {"connect", new_connect},
         {"close", close_conn},
@@ -2621,7 +2621,7 @@ int main (int argc, char **argv)
     }
     luaL_openlibs(L);
 
-    luaL_register(L, "myp", myp);
+    luaL_register(L, "dpm", dpm);
     register_obj_types(L); /* Internal call to fill all custom metatables */
 
     /* Time to do argument parsing! */

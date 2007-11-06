@@ -17,7 +17,7 @@
  --
  --  This file is the lua-level standard library for using DPM.
 
-local myp   = myp
+local dpm   = dpm
 -- What's the bigger package for all this?
 local table = table
 local pairs = pairs
@@ -40,35 +40,35 @@ end
 function send_resultset(c, t)
     local fields = t["fields"]
     local rows   = t["rows"]
-    local rset   = myp.new_rset_pkt()
+    local rset   = dpm.new_rset_pkt()
 
     rset:field_count(table.maxn(fields))
 
-    myp.wire_packet(c, rset)
+    dpm.wire_packet(c, rset)
     for k, v in pairs(fields) do
-        local field = myp.new_field_pkt()
+        local field = dpm.new_field_pkt()
         field:name(v["name"], v["type"])
         rset:add_field(field)
-        myp.wire_packet(c, field)
+        dpm.wire_packet(c, field)
     end
 
-    local eof = myp.new_eof_pkt()
-    myp.wire_packet(c, eof)
+    local eof = dpm.new_eof_pkt()
+    dpm.wire_packet(c, eof)
 
-    local row = myp.new_row_pkt()
+    local row = dpm.new_row_pkt()
     for k, v in pairs(rows) do
         rset:pack_row(row, unpack(v))
-        myp.wire_packet(c, row)
+        dpm.wire_packet(c, row)
     end
 
-    myp.wire_packet(c, eof)
+    dpm.wire_packet(c, eof)
 end
 
 function send_error(c, state, errnum, message)
-    local err_pkt = myp.new_err_pkt()
+    local err_pkt = dpm.new_err_pkt()
     err_pkt:sqlstate(state)
     err_pkt:errnum(errnum)
     err_pkt:message(message)
-    myp.wire_packet(c, err_pkt)
+    dpm.wire_packet(c, err_pkt)
 end
 
