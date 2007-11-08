@@ -1,7 +1,5 @@
 Blockers for release-4:
 
-- learn to handle large mysql packets (at least identify them, and bomb saying
-  they're not supported)
 - more demos/libraries that make use of the new callback setup.
 - Find out how to insert 'array' elements into a table. pushinteger appears to
   be using nrec elements in a table (see luaobj.c:_rset_parse_data)
@@ -32,6 +30,7 @@ needs make-foo at some point. I tried, too lazy.
 non-parsing proxy mode to support a list of modes? any bugs?
 parsing code for COM_STATISTICS
 
+DONE ### learn to handle large mysql packets (at least identify them, and bomb saying they're not supported)
 DONE ### better mechanism for detecting closed conn?
 DONE ### ability to fully modify, luaize, and return custom query resultsets
 DONE ### Pass internal defines up into lua from within the C program, if possible.

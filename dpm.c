@@ -717,6 +717,17 @@ static int my_next_packet_start(conn *c)
     seq           = uint1korr(&c->rbuf[c->readto + 3]);
     c->packetsize += 4;
 
+    /* Don't handle large packets right now.
+     * TODO: This actually shouldn't be too hard. Keep spooling with this
+     * function until we can scan to the end of the function within the buffer
+     * structure. Ugly, but the protocol's ugly anyway.
+     */
+    if (c->packetsize == 0 && seq == 255) {
+        fprintf(stderr, "***WARNING*** DPM does not support packet sizes larger than 16M currently. If you report this warning it will probably be fixed.");
+        handle_close(c);
+        return -1;
+    }
+
     /* If we've read a packet header, see if we have the whole packet. */
     if (c->read - c->readto >= c->packetsize) {
         /* Test the packet header. Is it out of sequence? */
