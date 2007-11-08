@@ -2652,7 +2652,7 @@ int main (int argc, char **argv)
         default:
             printf("Dormando's Proxy for MySQL release " VERSION "\n");
             printf("Usage: --startfile startupfile.lua (default 'startup.lua')\n"
-                   "  --verbose [num] (increase verbosity)\n");
+                   "       --verbose [num] (increase verbosity)\n");
             return -1;
         }
     }
