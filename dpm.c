@@ -2596,6 +2596,7 @@ int main (int argc, char **argv)
     static struct option l_options[] = {
         {"startfile", 1, 0, 's'},
         {"verbose", 2, 0, 'v'},
+        {"help", 3, 0, 'h'},
     };
 
     /* Init /dev/urandom socket... */
@@ -2636,7 +2637,7 @@ int main (int argc, char **argv)
     register_obj_types(L); /* Internal call to fill all custom metatables */
 
     /* Time to do argument parsing! */
-    while ( (c = getopt_long(argc, argv, "s:v", l_options, NULL) ) != -1) {
+    while ( (c = getopt_long(argc, argv, "s:v:h", l_options, NULL) ) != -1) {
         switch (c) {
         case 's':
             startfile = optarg;
