@@ -704,7 +704,6 @@ static int obj_pstring(lua_State *L, void *var, void *var2)
 /* Sets/returns bit flags within a value. 
  * If one arg, returns flag val. If two arg, sets flag to a boolean of second
  * arg.
- * FIXME: Untested
  * Arguments are all 16-bit, but tihs uses 'int'!
  */
 static int obj_flags(lua_State *L, void *var, void *var2)
