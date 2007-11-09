@@ -73,7 +73,7 @@ static const obj_reg conn_regs [] = {
 
 static const obj_reg handshake_regs [] = {
     {"protocol_version", obj_uint8_t, LO_READWRITE, offsetof(my_handshake_packet, protocol_version), 0},
-    {"server_version", obj_string, LO_READONLY, offsetof(my_handshake_packet, server_version), 0},
+    {"server_version", obj_string, LO_READWRITE, offsetof(my_handshake_packet, server_version), SERVER_VERSION_LENGTH},
     {"thread_id", obj_uint32_t, LO_READWRITE, offsetof(my_handshake_packet, thread_id), 0},
     {"scramble_buff", obj_string, LO_READONLY, offsetof(my_handshake_packet, scramble_buff), 20},
     {"server_capabilities", obj_flags, LO_READWRITE, offsetof(my_handshake_packet, server_capabilities), 0},
