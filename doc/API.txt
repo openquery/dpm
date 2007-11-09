@@ -1,0 +1,275 @@
+API document for wirting LUA code with DPM.
+
+It's not the best now, please feel free to submit patches!
+
+CONTENTS
+--------
+
+- High level overview
+- Basic scripting
+- How callbacks work
+- dpm reference
+- dpml reference
+- Packet objects
+- Understanding resultset flow
+
+--------
+
+HIGH LEVEL OVERVIEW
+-------------------
+
+At the highest level, there is the commandline.
+
+$ ./dpm --help
+Dormando's Proxy for MySQL release 0
+Usage: --startfile startupfile.lua (default 'startup.lua')
+       --verbose [num] (increase verbosity)
+
+dpm supports a limited number of commandline options. --verbose is helpful for
+debugging, and --startfile is where the magic happens.
+
+There is no configuration besides the startup file. All listening sockets,
+packages, functions, commands, etc, are defined within your startup.lua file,
+which can be named however you want.
+
+$ ./dpm --startfile blahblahblah.lua
+
+... is perfectly valid.
+
+DPM is an "event based" API. You attach functions to "events" which happen in
+the system, then they are called by DPM with relevent arguments defined. Build
+around this to create packages, and ultimately your startup file.
+
+Listening sockets are _not_ defined on the commandline, as they may be added
+or removed at any time during operation. Furthermore, what _happens_ when
+something connects to a listening port on DPM is entirely up to the code.
+
+Example:
+
+function new_3306_client(client)
+    print("Someone connected: " .. client:id()
+end
+
+listener = dpm.listener("127.0.0.1", 3306)
+listen:register(dpm.MYC_CONNECT, new_3306_client)
+
+... This means the function 'new_3306_client' will fire, with a new client
+object as an argument, when a mysql client connects to the proxy on localhost port 3306.
+
+As long as the "listener" object exists and is open, clients may connect on
+that port. This flexibility allows some spiffy hacks:
+
+- Connecting to different ports may run entirely different code.
+- Listeners may be created or closed at runtime. It is possible to inject code
+  and listen on a new port at any point during client runtime!
+
+You might want to use this to create a special "administrator" port with its
+own private authentication that you use to manage the instance, along with the
+standard operation.
+
+Once startup.lua is ran there is no way to reload it at runtime. If you wish
+to have each connection use a fresh copy of a script from disk it is a simple
+lua task to do so. This should be an easy-to-use function within the dpml
+library, but does not exist as of this writing.
+
+
+BASIC SCRIPTING
+---------------
+
+DPM uses LUA for its scripting language. It is an event-driven callback
+interface, with a small library of C functions. DPM provides an "object
+interface" almost directly on top of the mysql protocol's packets. The ideal
+is to allow the most flexibility possible by making allowing most high level
+features to be implemented solely in lua.
+
+The easiest way to get the hang of writing basic programs for DPM is to browse
+the lua/ directory from the source tree. This contains a number of demo-*.lua
+files which give basic examples of different programs you might write.
+
+So, lets do a basic walkthrough to get the hang of things. We'll follow how a
+program might be executed and explain the steps in order to get the hang of
+things.
+
+Lets edit imaginary.lua as a startup file.
+
+At the top of the file, we wish to include the "dpml" library, which is a
+raw-lua wrapper library written to make verbose raw API operations more
+manageable.
+
+package.path = 'lua/?.lua'
+require "dpml"
+
+(note: once uh, there's a "real" installer with "real" paths, the package.path
+line won't be necessary).
+
+Then the middle of the file will be our function definitions, but fast forward
+to the bottom...
+
+-- Set up the listener, register a callback for new clients.
+listen = dpm.listener("127.0.0.1", 5500)
+listen:register(dpm.MYC_CONNECT, new_client)
+
+... initialize a "listener" connection object and register new_client as a lua
+function which will get called when new mysql clients connect to the proxy.
+
+"dpm" is a lua "library" created by DPM's C backend as it starts up. It
+creates new C based lua objects or operations against them. So dpm.listener()
+is a function which returns a special "connection" object.
+
+"listen" is now a C object with a number of accessors available (see API
+references below). listen:id() will return the internal id number of the
+connection, for instance. Accessors all behave similar. If you pass a
+variable, it will change the value. With no arguments it will return the
+current contents. Accessors can be private or public, readonly or readwrite.
+
+register() is the basic interface into the event callback system. Events can
+fire on any connection object, for any stage in the mysql protocol.
+
+A listener object only has one valuable callback, which is "MYC_CONNECT". The
+dpm library contains constants along with functions, so it is used here to
+reference exactly which callback to register new_client into.
+
+Now, the new_client function:
+
+function new_client(client)
+    print("New client connecting: " .. c:id())
+    -- "c" is a new listening connection object.
+    conns[client:id()] = client
+
+... Above you see the function is called with an argument, which is a new connection object representing the remote mysql client.
+
+    dpml.register_callbacks(c, { [dpm.MYC_SENT_CMD] = new_command,
+                                 [dpm.MY_CLOSING]   = client_closing,
+                            })
+
+... Here the 'dpml' lua library is used to simplify registering multiple callbacks into the object. The only things we care about with this program are when new commands come in, and when the connection closes. The rest of the authentication steps will be transparently proxied to a backend mysqld.
+
+    -- Init a backend just for this connection.
+    local backend = new_backend()
+    conns[backend:id()] = backend
+
+... Which is initialized here! new_backend is a lua function we will create later. Its job is to create a new connection object to point to our mysql server.
+
+    -- Connect the backend to the client (and never disconnect later).
+    dpm.proxy_connect(client, backend)
+
+... Then we use the dpm function proxy_connect(client, backend). This tells DPM that all packets coming into the client will be transparently forwarded to the backend we just created, unless otherwise intercepted. This transparency allows us to disconnect the idea that one mysql client equals one mysql server thread. We don't even need a server at all to handle rudimentary requests.
+
+    return dpm.DPM_NOPROXY
+end
+
+... and the return code. DPM has a few return codes which callbacks can use to signal what to do. Each event is generated usually if there is a packet waiting on the wire. Once you do some work you might not want to forward that original packet on anymore. Maybe you're holding onto it for later, or replaced it and sent your own packet instead.
+
+There is an unfortnuate special case with connecting clients. There isn't a packet on the wire when they connect, so we don't want to attempt to proxy anything. Return codes default to dpm.DPM_OK, which means to forward on the packet.
+
+Now, lets look at the new_backend function:
+
+function new_backend()
+    local backend = dpm.connect("127.0.0.1", 3306)
+    backend:register(dpm.MY_CLOSING, backend_death)
+    return backend
+end
+
+Simple. We will ignore backend_death for this discussion. See lua/demo-lib.lua if you're curious. dpm.connect() creates an object which will reach out and attempt to establish a connection to a mysql server. Keep in mind that a "connected" backend means it hasn't even authenticated yet. That's something we can choose to ignore (by blindly connecting a client to a backend), or by intercepting and doing dark magic with ourselves.
+
+We will skip a few other minor formalities and now discuss reading queries from a client.
+
+function new_command(command, clientid)
+    print("Received command: " .. command:argument() .. " : " .. command:command())
+
+... Now we have a command object, which we can use to examine the SQL sent from the client or replace it.
+
+command:argument("SELECT 1 + 1") -- would edit the command to be whatever you
+put in it.
+
+If you wanted to change the packet, you would have to "wire" the edited packet
+to the server instead. See lua/demo-direct.lua's "new_command" function for a
+complete example. If you send it a "HELLO" it will change the packet and
+forward it on to the server instead.
+
+Since we've sent a new, edited packet along, we don't want to forward the
+original one anymore. So return dpm.DPM_NOPROXY to ensure this.
+
+
+HOW CALLBACKS WORK
+------------------
+
+By now you know:
+
+connection:register(dpm.MYC_SENT_CMD, new_command)
+
+... registers a callback into the C library which fires the lua function
+'new_command' when the subsystem hits that event. This is implemented by a
+simple array check. If it _looks_ like a callback has not been registered for
+a particular event, DPM won't even contact lua, it will discard or proxy the
+packet.
+
+Connections have *two* layers of callbacks total. There are the internal
+callbacks, and package callbacks.
+
+Package callbacks are separate objects which may be swapped in and out of
+connections, instantly changing the callbacks.
+
+If you examine the lua/demo-autoexplain.lua script, you will find a global
+object called "callback". At the bottom of the script callbacks are registered
+into this object in the same method as a connection would.
+
+then we introduce one more function for connection objects:
+
+connection:package_register(callbackobject)
+
+... this function will glue the callbacks from the _separate_ callback object
+_onto_ the connection object, preserving the original callbacks underneath.
+
+After applying a callback object to a connection, only callbacks registered
+into the callback object will fire. If a function is not registered into the
+callback object, and there is one on the underlying connection object, it will
+*not* run.
+
+The one exception to this rule is the dpm.MY_CLOSING event. This event will
+always run from the callbacks registered into the connection object. This will
+ensure you get a chance to clean up after a dead connection even if someone's
+module is prensetly in control of the connection.
+
+
+DPM REFERENCE
+-------------
+
+The most up to date list of 'dpm' functions will be listed in the 'dpm' struct
+in dpm.c:main()
+
+The best place to get a list of constants exposed via the 'dpm' module are in
+luaobj.c:register_obj_defines()
+
+DPML REFERENCE
+--------------
+
+The most up to date reference here will be the lua/dpml.lua file
+
+PACKET OBJECTS
+--------------
+
+The easiest way to find out what accessors are supported by packet objects
+presently is to check the source code. Thankfully this isn't too obscure.
+
+Crack open luaobj.c and scroll down to structures which look like this:
+
+static const obj_reg conn_regs [] = {
+
+... in this section each type of object is described by a list of its
+accessors, you only need to pay attention to the three leftmost columns.
+
+The leftmost column is the name of the accessor, so
+connection:protocol_version() would call that accessor. The second column is
+the internal C function that handles the accessor.
+
+obj_uint* manes it takes or returns a number.
+obj_string, lstring, etc, means it takes or retruns a string.
+
+Some objects, like the rset object, have a number of magic accessors, which
+will be described individually.
+
+UNDERSTANDING RESULTSET FLOW
+----------------------------
+
+For future release.
