@@ -23,6 +23,9 @@
 --                       original packet.
 -- DPM_FLUSH_DISCONNECT  Flush packet on wire and disconnect clients
 
+package.path = 'lua/?.lua'
+require "dpml"
+
 clients  = {}
 storage  = {}
 
@@ -102,32 +105,6 @@ function finished_command(cid)
     return dpm.DPM_FLUSH_DISCONNECT
 end
 
-function server_err(err_pkt, cid)
-    print("Backend error: " .. err_pkt:message() .. " id: " .. cid)
-end
-
-function server_ready(ok_pkt, cid)
-    print("Backend ready!")
-    backend:register(dpm.MYS_WAIT_CMD, finished_command)
-    backend:register(dpm.MYS_RECV_ERR, finished_command)
-    backend:register(dpm.MY_CLOSING, new_backend)
-end
-
-function server_handshake(hs_pkt, cid)
-    print("Got handshake from server, sending auth")
-
-    local auth_pkt = dpm.new_auth_pkt()
-    auth_pkt:user(BACKEND_USERNAME)
-    dpm.crypt_pass(auth_pkt, hs_pkt, BACKEND_PASSWORD)
-
-    dpm.wire_packet(backend, auth_pkt)
-    -- Don't need to store anything, server will return 'ok' or 'err' packet.
-    backend:register(dpm.MYS_WAIT_CMD, server_ready)
-    backend:register(dpm.MYS_RECV_ERR, server_err)
-    backend:register(dpm.MY_CLOSING, new_backend)
-end
-
--- TODO: This should sleep.
 function new_backend(cid)
     print "Creating new backend..."
     -- This function is overloaded slightly.
@@ -136,9 +113,24 @@ function new_backend(cid)
         print "Backend died! Could not authenticate or connect!"
     end
 
-    -- Then create new connection.
-    backend = dpm.connect("127.0.0.1", 3306)
-    backend:register(dpm.MYS_WAIT_AUTH, server_handshake)
+    dpml.connect_mysql_server({ host = "127.0.0.1", 
+                          user = BACKEND_USERNAME, pass = BACKEND_PASSWORD,
+                          callback = server_ready
+                          })
+end
+
+function server_ready(server, err)
+    print "Backend ready!"
+    if err then
+        print("Error creating backend: " .. err)
+        os.exit()
+    end
+    backend = server
+
+    dpml.register_callbacks(backend, { [dpm.MYS_WAIT_CMD] = finished_command,
+                            [dpm.MYS_RECV_ERR] = finished_command,
+                            [dpm.MY_CLOSING]   = new_backend,
+                           })
 end
 
 -- Set up the listener, register a callback for new clients.
