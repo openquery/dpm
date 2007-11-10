@@ -28,6 +28,9 @@ module(...)
 -- "local function blah" private
 -- "function blah" public
 
+-- Temporary storage for library functions.
+local conns = {}
+
 -- Tiny helper routine for mass-setting callbacks.
 function register_callbacks(cb, t)
     for k, v in pairs(t) do
@@ -70,5 +73,78 @@ function send_error(c, state, errnum, message)
     err_pkt:errnum(errnum)
     err_pkt:message(message)
     dpm.wire_packet(c, err_pkt)
+end
+
+--
+-- Routines for server authentication.
+--
+
+-- If the server unexpected closes before authentication is finished, we
+-- handle it with the library. Otherwise the caller will handle.
+local function cms_server_closed(cid)
+    local dsn = conns[cid]["dsn"]
+    conns[cid] = nil
+
+    return dsn.callback(nil, "DPM: Connection closed unexpectedly")
+end
+
+-- Success! Clear the local values, unregister callbacks, and inform the
+-- caller.
+local function cms_server_ready(ok, cid)
+    local server = conns[cid]["conn"]
+    local dsn    = conns[cid]["dsn"]
+    server:package_register(nil)
+
+    server:register(dpm.MY_CLOSING, nil)
+    conns[cid] = nil
+
+    return dsn.callback(server, nil)
+end
+
+-- Propagate MySQL errors up to the caller.
+local function cms_server_err(err, cid)
+    local dsn = conns[cid]["dsn"]
+    conns[cid] = nil
+
+    return dsn.callback(nil, err:message())
+end
+
+-- Received a handshake packet.
+-- From what information was given, set a default db, password, crypto, etc,
+-- and send the authentication packet to the server.
+local function cms_server_handshake(hs, cid)
+    local auth = dpm.new_auth_pkt()
+    local dsn  = conns[cid]["dsn"]
+
+    auth:user(dsn["user"])
+
+    if dsn["db"] then
+        auth:databasename(dsn["db"])
+    end
+
+    if dsn["pass"] then
+        dpm.crypt_pass(auth, hs, dsn["pass"])
+    end
+
+    dpm.wire_packet(conns[cid]["conn"], auth)
+end
+
+local connect_mysql_server_callbacks = dpm.new_callback()
+register_callbacks(connect_mysql_server_callbacks, {
+                   [dpm.MYS_WAIT_AUTH] = cms_server_handshake,
+                   [dpm.MYS_WAIT_CMD]  = cms_server_ready,
+                   [dpm.MYS_RECV_ERR]  = cms_server_err,
+                   })
+
+-- Helper which will attempt to authenticate against a mysql server.
+-- Returns an authenticated backend connection object, or nil and an error if
+-- it failed.
+-- Takes: host, port, user, pass, db, callback
+function connect_mysql_server(t)
+    local server = dpm.connect(t["host"], t["port"] and t["port"] or 3306)
+    server:register(dpm.MY_CLOSING, cms_server_closed)
+    server:package_register(connect_mysql_server_callbacks)
+
+    conns[server:id()] = { conn = server, dsn = t }
 end
 
