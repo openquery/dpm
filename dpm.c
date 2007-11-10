@@ -2544,7 +2544,7 @@ static int new_listener(lua_State *L)
 
     setsockopt(l_socket, SOL_SOCKET, SO_REUSEADDR, (void *)&flags, sizeof(flags));
     setsockopt(l_socket, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
-
+    memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port_num);
     addr.sin_addr.s_addr = inet_addr(ip_addr);
