@@ -1,19 +1,20 @@
-Blockers for release-4:
-
-- more demos/libraries that make use of the new callback setup.
-- Find out how to insert 'array' elements into a table. pushinteger appears to
-  be using nrec elements in a table (see luaobj.c:_rset_parse_data)
-- standard lua modules: 1) backend connect 2) client accept 3) passthrough
-
 Blockers for release-5:
 
-- pick one code style to clean up, and clean it.
+- dpml function: client accept (auth, no auth)
+- dpml function: passthrough accept
+- dpml function: read resultset (+ get server flags, etc)
+- flush all connections which were written to during callback
+- pick one code style to clean up, and clean it
 - support at least COM_CHANGE_USER, COM_PING
-- test and use the luaobj 'flag' accessors
-- start test package (perl TAP? Probably).
+- Find out how to insert 'array' elements into a table. pushinteger appears to
+  be using nrec elements in a table (see luaobj.c:_rset_parse_data)
+- Make stringified remote client IP available to lua
+- Backend crypto is _actually_ buggy. Restrict characters generated for hash.
 
 Blockers for release-6:
 
+- start test package (perl TAP? Probably)
+- coroutine demo
 - port to at least one other OS
 - support UDP sockets
 - support listening on INADDR_ANY
@@ -30,6 +31,7 @@ needs make-foo at some point. I tried, too lazy.
 non-parsing proxy mode to support a list of modes? any bugs?
 parsing code for COM_STATISTICS
 
+DONE ### test and use the luaobj 'flag' accessors
 DONE ### learn to handle large mysql packets (at least identify them, and bomb saying they're not supported)
 DONE ### better mechanism for detecting closed conn?
 DONE ### ability to fully modify, luaize, and return custom query resultsets
