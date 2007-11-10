@@ -246,6 +246,18 @@ DPML REFERENCE
 
 The most up to date reference here will be the lua/dpml.lua file
 
+-- Wrapper to establish a mysql server connection. Takes a set of DSN options
+-- and handles all of the manual handshake packet work.
+-- Upon success or failure, the callback is called as:
+-- callback(server, err)
+-- If 'server' is nil, the connection failed and 'err' should be set.
+-- Otherwise, if 'server' is an object and 'err' is nil, the connection 
+-- succeeded.
+dpml.connect_mysql_server({ host = "127.0.0.1", port = 3306, user = "root",
+                            pass = "s3rkr1t", db = "test",
+                            callback = server_ready
+                          })
+
 PACKET OBJECTS
 --------------
 
