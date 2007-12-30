@@ -1,18 +1,61 @@
 project(dpm C)
 include(UsePkgConfig)
+# Cmake < 2.4.6 does not have FindPkgConfig
+include(FindPkgConfig OPTIONAL)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
+
+
+#
+# TODO: Also make this pass -DDEBUG to the compilation phase.
+#
+if(DEBUG)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
+    message("Compiling in debug mode")
+endif(DEBUG)
+
+#
+# For now, require pkg-config exist in order to build.
+#
+if(NOT PKG_CONFIG_FOUND AND NOT PKGCONFIG_EXECUTABLE)
+    message(FATAL_ERROR "pkg-config is needed for compilation!")
+endif(NOT PKG_CONFIG_FOUND AND NOT PKGCONFIG_EXECUTABLE)
+
+#
+# locate pkgconfig - only verify if pkgconfig exists
+#
+if(PKG_CONFIG_FOUND)
+    message(STATUS "Using pkg-config")
+    pkg_check_modules(LUA lua>=5.1)
+
+    if(NOT LUA_VERSION)
+        pkg_check_modules(LUA lua51>=5.1)
+        if (NOT LUA_VERSION)
+            message(SEND_ERROR "lua 5.1 was not found (via find pkgconfig)")
+        endif(NOT LUA_VERSION)
+    endif(NOT LUA_VERSION)
+endif(PKG_CONFIG_FOUND)
 
 #
 # locate lua via pkgconfig. debian uses versioned lua${ver}.pc files.
 #
-pkgconfig("lua5.1" LUA_INCLUDE_DIR LUA_LINK_DIR LUA_LDFLAGS LUA_CFLAGS)
-if(NOT LUA_INCLUDE_DIR)
-  pkgconfig("lua" LUA_INCLUDE_DIR LUA_LINK_DIR LUA_LDFLAGS LUA_CFLAGS)
-  if(NOT LUA_INCLUDE_DIR)
-    message(SEND_ERROR "lua 5.1 was not found (via pkgconfig)")
-  endif(NOT LUA_INCLUDE_DIR)
-endif(NOT LUA_INCLUDE_DIR)
+if(PKGCONFIG_EXECUTABLE)
+    pkgconfig("lua5.1" LUA_INCLUDE_DIR LUA_LINK_DIR LUA_LDFLAGS LUA_CFLAGS)
+    if(NOT LUA_INCLUDE_DIR)
+      pkgconfig("lua" LUA_INCLUDE_DIR LUA_LINK_DIR LUA_LDFLAGS LUA_CFLAGS)
+      if(NOT LUA_INCLUDE_DIR)
+        message(SEND_ERROR "lua 5.1 was not found (via use pkgconfig)")
+      endif(NOT LUA_INCLUDE_DIR)
+    endif(NOT LUA_INCLUDE_DIR)
+endif(PKGCONFIG_EXECUTABLE)
+
+#
+# TODO: If there is no pkg-config, emulate FIND_PACKAGE behavior to locate lua
+# and libevent.
+#
+FIND_LIBRARY(LUAL NAMES lua)
+FIND_LIBRARY(EVENT NAMES event)
+message("${LUAL} ${EVENT}")
 
 message("${LUA_INCLUDE_DIR} ${LUA_LINK_DIR} ${LUA_LDFLAGS} ${LUA_CFLAGS}")
 
