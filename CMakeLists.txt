@@ -3,8 +3,9 @@ include(UsePkgConfig)
 # Cmake < 2.4.6 does not have FindPkgConfig
 include(FindPkgConfig OPTIONAL)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
+option(DEBUG "Compile DPM in DEBUG mode")
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
 
 #
 # TODO: Also make this pass -DDEBUG to the compilation phase.
@@ -15,14 +16,9 @@ if(DEBUG)
 endif(DEBUG)
 
 #
-# For now, require pkg-config exist in order to build.
-#
-if(NOT PKG_CONFIG_FOUND AND NOT PKGCONFIG_EXECUTABLE)
-    message(FATAL_ERROR "pkg-config is needed for compilation!")
-endif(NOT PKG_CONFIG_FOUND AND NOT PKGCONFIG_EXECUTABLE)
-
-#
 # locate pkgconfig - only verify if pkgconfig exists
+# This is an extra verification step if FindPkgConfig exists.
+# We use the variables exposed by UsePkgConfig instead.
 #
 if(PKG_CONFIG_FOUND)
     message(STATUS "Using pkg-config")
@@ -50,26 +46,50 @@ if(PKGCONFIG_EXECUTABLE)
 endif(PKGCONFIG_EXECUTABLE)
 
 #
-# TODO: If there is no pkg-config, emulate FIND_PACKAGE behavior to locate lua
-# and libevent.
+# If there is no pkg-config, emulate FIND_PACKAGE behavior to locate lua.
 #
-FIND_LIBRARY(LUAL NAMES lua)
-FIND_LIBRARY(EVENT NAMES event)
-message("${LUAL} ${EVENT}")
+if(NOT LUA_INCLUDE_DIR)
+    find_path(LUA_INCLUDE_DIR NAMES lua.h)
+    find_library(LUA_LIBRARY NAMES lua)
 
-message("${LUA_INCLUDE_DIR} ${LUA_LINK_DIR} ${LUA_LDFLAGS} ${LUA_CFLAGS}")
+    if(LUA_INCLUDE_DIR AND LUA_LIBRARY)
+        set(LUA_FOUND TRUE)
+    endif(LUA_INCLUDE_DIR AND LUA_LIBRARY)
+
+    if(NOT LUA_MANUALLY_FOUND)
+        message(FATAL_ERROR "Lua 5.1 was not found (via scanning)")
+    endif(NOT LUA_MANUALLY_FOUND)
+endif(NOT LUA_INCLUDE_DIR)
+
+if(VERBOSE)
+    message("${LUA_INCLUDE_DIR} ${LUA_LINK_DIR} ${LUA_LDFLAGS} ${LUA_CFLAGS}")
+endif(VERBOSE)
 
 #
 # libevent doesn't have a pkgconfig file,
 # so we have to make some assumptions (user can override)
 #
 if(NOT LIBEVENT_PREFIX)
-set(LIBEVENT_PREFIX "/usr")
+    find_path(LIBEVENT_INCLUDE_DIR NAMES event.h)
+    find_library(LIBEVENT_LIBRARY NAMES event)
+
+    if(LIBEVENT_INCLUDE_DIR AND LIBEVENT_LIBRARY)
+        set(LIBEVENT_FOUND TRUE)
+    endif(LIBEVENT_INCLUDE_DIR AND LIBEVENT_LIBRARY)
+
+    if(NOT LIBEVENT_FOUND AND NOT LIBEVENT_PREFIX)
+        message(FATAL_ERROR "libevent library or header not found. Retry with -DLIBEVENT_PREFIX='/path/to/your/libevent'")
+    endif(NOT LIBEVENT_FOUND AND NOT LIBEVENT_PREFIX)
 endif(NOT LIBEVENT_PREFIX)
 
-set(LIBEVENT_INCLUDE_DIR "${LIBEVENT_PREFIX}/include")
-set(LIBEVENT_LINK_DIR "${LIBEVENT_PREFIX}/lib")
-set(LIBEVENT_LDFLAGS "-levent")
+if(LIBEVENT_PREFIX)
+    set(LIBEVENT_INCLUDE_DIR "${LIBEVENT_PREFIX}/include")
+    set(LIBEVENT_LINK_DIR "${LIBEVENT_PREFIX}/lib")
+    set(LIBEVENT_LDFLAGS "-levent")
+    if(NOT EXISTS "${LIBEVENT_INCLUDE_DIR}/event.h")
+        message(FATAL_ERROR "libevent's event.h header not found. Retry with -DLIBEVENT_PREFIX='/path/to/your/libevent'")
+    endif(NOT EXISTS "${LIBEVENT_INCLUDE_DIR}/event.h")
+endif(LIBEVENT_PREFIX)
 
 #
 # all files compiled in this directory get these additional paths
@@ -85,3 +105,13 @@ add_executable(dpm sha1.c luaobj.c dpm.c)
 set_target_properties(dpm PROPERTIES
     COMPILE_FLAGS "${LUA_CFLAGS} ${LIBEVENT_CFLAGS}"
     LINK_FLAGS "${LUA_LDFLAGS} ${LIBEVENT_LDFLAGS}")
+
+if(LUA_MANUALLY_FOUND)
+    message(STATUS "Linking with manually detected lua")
+    target_link_libraries(dpm ${LUA_LIBRARY})
+endif(LUA_MANUALLY_FOUND)
+
+if(LIBEVENT_FOUND)
+    message(STATUS "Linking with manually detected libevent")
+    target_link_libraries(dpm ${LIBEVENT_LIBRARY})
+endif(LIBEVENT_FOUND)
