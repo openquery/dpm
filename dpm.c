@@ -2612,13 +2612,11 @@ int main (int argc, char **argv)
     /* I thought there was a non-environment method of changing the path, but
      * this is it. The documentation says ';;' is replaced by the default
      * paths. */
-    #ifdef DPMLIBDIR
     if ( !getenv("LUA_PATH") && -1 == setenv("LUA_PATH",
-        ";;" DPMLIBDIR "/lua/?.lua;" DPMLIBDIR "/lua/lib/?.lua", 1) ) {
+        ";;" DPMLIBDIR "/lua/?.lua;" DPMLIBDIR "/lua/lib/?.lua;lua/?.lua;lua/lib/?.lua", 1) ) {
         perror("Could not configure paths for DPM's lua libraries");
         return -1;
     }
-    #endif
 
     /* Initialize the event system. */
     event_init();

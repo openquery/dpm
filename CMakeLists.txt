@@ -106,9 +106,7 @@ set_target_properties(dpm PROPERTIES
     COMPILE_FLAGS "${LUA_CFLAGS} ${LIBEVENT_CFLAGS}"
     LINK_FLAGS "${LUA_LDFLAGS} ${LIBEVENT_LDFLAGS}")
 
-if(NOT DEBUG)
-    add_definitions(-DDPMLIBDIR="\\"${CMAKE_INSTALL_PREFIX}/dpm\\"")
-endif(NOT DEBUG)
+add_definitions(-DDPMLIBDIR="\\"${CMAKE_INSTALL_PREFIX}/dpm\\"")
 
 if(LUA_MANUALLY_FOUND)
     message(STATUS "Linking with manually detected lua")
