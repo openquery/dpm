@@ -2,6 +2,7 @@ project(dpm C)
 include(UsePkgConfig)
 # Cmake < 2.4.6 does not have FindPkgConfig
 include(FindPkgConfig OPTIONAL)
+cmake_minimum_required(VERSION 2.4.5)
 
 option(DEBUG "Compile DPM in DEBUG mode")
 
@@ -49,11 +50,13 @@ endif(PKGCONFIG_EXECUTABLE)
 # If there is no pkg-config, emulate FIND_PACKAGE behavior to locate lua.
 #
 if(NOT LUA_INCLUDE_DIR)
-    find_path(LUA_INCLUDE_DIR NAMES lua.h)
-    find_library(LUA_LIBRARY NAMES lua)
+    find_path(LUA_INCLUDE_DIR NAMES lua.h PATHS /usr/local/include PATH_SUFFIXES lua51)
+    find_library(LUA_LIBRARY NAMES lua PATHS /usr/local/lib PATH_SUFFIXES lua51)
 
     if(LUA_INCLUDE_DIR AND LUA_LIBRARY)
         set(LUA_MANUALLY_FOUND TRUE)
+        # Lua's always bound to -lm so far as I know...
+	set(LUA_LDFLAGS "-lm")
     endif(LUA_INCLUDE_DIR AND LUA_LIBRARY)
 
     if(NOT LUA_MANUALLY_FOUND)
@@ -94,9 +97,8 @@ endif(LIBEVENT_PREFIX)
 #
 # all files compiled in this directory get these additional paths
 #
-set_directory_properties(PROPERTIES
-    INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR} ${LIBEVENT_INCLUDE_DIR}"
-    LINK_DIRECTORIES "${LUA_LINK_DIR} ${LIBEVENT_LINK_DIR}")
+include_directories(${LUA_INCLUDE_DIR} ${LIBEVENT_INCLUDE_DIR})
+link_directories(${LUA_LINK_DIR} ${LIBEVENT_LINK_DIR})
 
 #
 # compile to 'dpm'
