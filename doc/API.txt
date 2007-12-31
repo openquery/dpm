@@ -96,11 +96,7 @@ At the top of the file, we wish to include the "dpml" library, which is a
 raw-lua wrapper library written to make verbose raw API operations more
 manageable.
 
-package.path = 'lua/?.lua'
 require "dpml"
-
-(note: once uh, there's a "real" installer with "real" paths, the package.path
-line won't be necessary).
 
 Then the middle of the file will be our function definitions, but fast forward
 to the bottom...

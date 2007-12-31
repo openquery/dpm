@@ -106,6 +106,10 @@ set_target_properties(dpm PROPERTIES
     COMPILE_FLAGS "${LUA_CFLAGS} ${LIBEVENT_CFLAGS}"
     LINK_FLAGS "${LUA_LDFLAGS} ${LIBEVENT_LDFLAGS}")
 
+if(NOT DEBUG)
+    add_definitions(-DDPMLIBDIR="\\"${CMAKE_INSTALL_PREFIX}/dpm\\"")
+endif(NOT DEBUG)
+
 if(LUA_MANUALLY_FOUND)
     message(STATUS "Linking with manually detected lua")
     target_link_libraries(dpm ${LUA_LIBRARY})
@@ -115,3 +119,9 @@ if(LIBEVENT_FOUND)
     message(STATUS "Linking with manually detected libevent")
     target_link_libraries(dpm ${LIBEVENT_LIBRARY})
 endif(LIBEVENT_FOUND)
+
+#
+# install phase - we have the proxy binary and lua libraries.
+#
+install(TARGETS dpm RUNTIME DESTINATION bin)
+install(DIRECTORY lua DESTINATION dpm)

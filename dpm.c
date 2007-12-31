@@ -2576,6 +2576,10 @@ static int new_listener(lua_State *L)
     return 1;
 }
 
+#ifndef DPMLIBDIR
+    #define DPMLIBDIR "."
+#endif
+
 int main (int argc, char **argv)
 {
     struct sigaction sa;
@@ -2592,7 +2596,7 @@ int main (int argc, char **argv)
     };
     /* Argument parsing helper. */
     int c;
-    char *startfile = "lua/startup.lua";
+    char *startfile = DPMLIBDIR "/lua/startup.lua";
     static struct option l_options[] = {
         {"startfile", 1, 0, 's'},
         {"verbose", 2, 0, 'v'},
@@ -2600,10 +2604,21 @@ int main (int argc, char **argv)
     };
 
     /* Init /dev/urandom socket... */
-    if( (urandom_sock = open("/dev/urandom", O_RDONLY)) == -1) {
+    if( (urandom_sock = open("/dev/urandom", O_RDONLY)) == -1 ) {
         perror("Opening /dev/urandom");
         return -1;
     }
+
+    /* I thought there was a non-environment method of changing the path, but
+     * this is it. The documentation says ';;' is replaced by the default
+     * paths. */
+    #ifdef DPMLIBDIR
+    if ( !getenv("LUA_PATH") && -1 == setenv("LUA_PATH",
+        ";;" DPMLIBDIR "/lua/?.lua;" DPMLIBDIR "/lua/lib/?.lua", 1) ) {
+        perror("Could not configure paths for DPM's lua libraries");
+        return -1;
+    }
+    #endif
 
     /* Initialize the event system. */
     event_init();

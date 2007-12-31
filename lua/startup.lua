@@ -23,7 +23,6 @@
 --                       original packet.
 -- DPM_FLUSH_DISCONNECT  Flush packet on wire and disconnect clients
 
-package.path = 'lua/?.lua'
 require "dpml"
 
 clients  = {}

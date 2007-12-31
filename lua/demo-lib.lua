@@ -20,7 +20,6 @@
 -- Authentication is handled by the server instead of the proxy.
 
 conns    = {}
-package.path = 'lua/?.lua'
 require "dpml"
 
 -- Client just got lost. Wipe callbacks, client table.
