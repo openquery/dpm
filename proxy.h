@@ -25,9 +25,11 @@
 #include <sys/stat.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
+#include <netinet/in.h> /* sockaddr_in BSD */
 #include <sys/un.h>
 #include <sys/resource.h>
 #include <sys/signal.h>
+#include <signal.h> /* BSD */
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>

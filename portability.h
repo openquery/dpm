@@ -37,13 +37,6 @@ This file is public domain and comes with NO WARRANTY of any kind */
 #endif
 
 
-/* Go around some bugs in different OS and compilers */
-#if defined(_HPUX_SOURCE) && defined(HAVE_SYS_STREAM_H)
-#include <sys/stream.h>        /* HPUX 10.20 defines ulong here. UGLY !!! */
-#define HAVE_ULONG
-#endif
-
-
 /* Some defines of functions for portability */
 
 #ifndef HAVE_ATOD
@@ -105,9 +98,6 @@ typedef unsigned long    uint32; /* Short for unsigned integer >= 32 bits */
 typedef uint32_t    uint32; /* see above :\ - Dormando */
 #endif
 
-#if !defined(HAVE_ULONG) && !defined(__USE_MISC)
-typedef unsigned long    ulong;    /* Short for unsigned long */
-#endif
 #ifndef longlong_defined
 #if defined(HAVE_LONG_LONG) && SIZEOF_LONG != 8
 typedef unsigned long long int ulonglong; /* ulong or unsigned long long */

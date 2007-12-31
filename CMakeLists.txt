@@ -5,7 +5,7 @@ include(FindPkgConfig OPTIONAL)
 
 option(DEBUG "Compile DPM in DEBUG mode")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-unused-parameter")
 
 #
 # TODO: Also make this pass -DDEBUG to the compilation phase.
