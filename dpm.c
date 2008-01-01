@@ -962,14 +962,18 @@ static int my_wire_auth_packet(conn *c, void *pkt)
 {
     my_auth_packet *p = (my_auth_packet *)pkt;
     int psize = 32;
-    size_t my_size = strlen(p->user) + 1;
+    size_t user_size = strlen(p->user) + 1;
+    size_t dbname_size = 0;
     size_t pass_size = strlen(p->scramble_buff);
     int base = c->towrite;
 
     /* password, or no password. */
     psize += pass_size == SHA1_DIGEST_SIZE ? 21 : 1;
+    /* databasename, or no databasename. */
+    if (p->databasename)
+        dbname_size = strlen(p->databasename) + 1;
     /* Add in the username length + header. */
-    psize += my_size + 4;
+    psize += user_size + dbname_size + 4;
 
     if (grow_write_buffer(c, c->towrite + psize) == -1) {
         return -1;
@@ -994,8 +998,8 @@ static int my_wire_auth_packet(conn *c, void *pkt)
     memset(&c->wbuf[base], 0, 23);
     base += 23;
 
-    memcpy(&c->wbuf[base], p->user, my_size);
-    base += my_size;
+    memcpy(&c->wbuf[base], p->user, user_size);
+    base += user_size;
 
     if (pass_size == SHA1_DIGEST_SIZE) {
         c->wbuf[base] = 20; /* Length of scramble buff. */
@@ -1007,6 +1011,11 @@ static int my_wire_auth_packet(conn *c, void *pkt)
          * the password size is _always_ either 0 or 20. */
         c->wbuf[base] = 0;
         base++;
+    }
+
+    if (dbname_size) {
+        memcpy(&c->wbuf[base], p->databasename, dbname_size);
+        base += dbname_size;
     }
 
     return 0;
