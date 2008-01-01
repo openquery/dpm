@@ -2613,7 +2613,7 @@ int main (int argc, char **argv)
      * this is it. The documentation says ';;' is replaced by the default
      * paths. */
     if ( !getenv("LUA_PATH") && -1 == setenv("LUA_PATH",
-        ";;" DPMLIBDIR "/lua/?.lua;" DPMLIBDIR "/lua/lib/?.lua;lua/?.lua;lua/lib/?.lua", 1) ) {
+        ";;lua/?.lua;lua/lib/?.lua;" DPMLIBDIR "/lua/?.lua;" DPMLIBDIR "/lua/lib/?.lua", 1) ) {
         perror("Could not configure paths for DPM's lua libraries");
         return -1;
     }

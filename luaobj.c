@@ -87,7 +87,7 @@ static const obj_reg auth_regs [] = {
     {"max_packet_size", obj_uint32_t, LO_READWRITE, offsetof(my_auth_packet, max_packet_size), 0},
     {"charset_number", obj_uint8_t, LO_READWRITE, offsetof(my_auth_packet, charset_number), 0},
     {"user", obj_string, LO_READWRITE, offsetof(my_auth_packet, user), 15},
-    {"databasename", obj_string, LO_READWRITE, offsetof(my_auth_packet, databasename), 0},
+    {"databasename", obj_pstring, LO_READWRITE, offsetof(my_auth_packet, databasename), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
