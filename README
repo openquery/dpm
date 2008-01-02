@@ -1,37 +1,34 @@
 Dormando's Proxy for MySQL
 Copyright 2007 Dormando (dormando@rydia.net)
 
-This code is presently a "preview" release. Enjoy it as a demo, at your own
-risk, and don't complain if it's missing features. This code is marked by
-GPLv2, with some parts LGPL and some parts public domain. The files with
-alternative licenses are marked as such, by the original authors.
+This is a "preview" release. Enjoy it as a demo, at your own risk, and don't complain if it's missing features. This code is marked by GPLv2, with some parts LGPL and some parts public domain. The files with alternative licenses are marked as such, by the original authors.
 
-This code is a general, scriptable proxy which speaks the MySQL protocol
-version "10", found in MySQL 5.0. The protocol is exposed at a low level into
-the scripting language Lua, from which one may do many cool things.
-
-The demo this codebase is able to do right now is a basic proxy trick. Connect
-two mysql clients to the proxy, and "SHOW PROCESSLIST" will only show one
-connection. Run 'use databasename' in one, 'show tables' in the other, and you
-should see the table list. It won't do much else due to crash bugs, but this
-is enough to prove that the whole mechanics work.
-
-The proxy is built as an event-based network daemon using libevent, and the
-scripting language is vanilla Lua 5.1.
+DPM is a general, scriptable proxy which speaks the MySQL protocol. It is built as an event-based network daemon using libevent, and the scripting language is vanilla Lua 5.1.
 
 BUILDING THE PROXY
 ------------------
 
-I've only compiled this thing on Gentoo AMD64, so if it works for you, lucky
-you! Building is straight forward:
+The recommended method of building DPM is to use CMake (http://www.cmake.org).
+Standard procedure for your platform is to:
 
-- Install the latest libevent library.
-- Install the latest lua 5.1 release.
-- Run 'make' from within the codebase.
-- Run 'make clean' to clear things up if necessary.
+- Install the latest libevent.
+- Install the latest lua 5.1
+- Then from within the source dir: mkdir build ; cd build ; cmake .. ; make ;
+  sudo make install
+  ... which will use a build directory to compile DPM, then install it and the
+  support scripts into /usr/local
 
-Once it is built, you may run it by typing './dpm' from within the codebase
-directory. This is necessary since it loads a couple .lua files locally.
+There is also a legacy Makefile. If you've installed the required libraries
+and run linux, just typing 'make' should build DPM for you.
+
+Type run `dpm --help` or just `dpm` to start it up.
+
+If you want to specify the install prefix, run the `cmake` command like so:
+cmake -DCMAKE_INSTALL_PREFIX="/path/to/other/dir" ../path/to/source/dir
+
+DPM has been tested on Linux (gentoo, debian), Mac OS X (PPC, intel) (10.4,
+10.5), OpenBSD 4.2, and FreeBSD 6.2. The procedure is roughly the same.
+Install dependencies, run cmake, make, make install.
 
 RUNNING THE DEMO
 ----------------
@@ -60,9 +57,8 @@ client will get what you need.
   few times, select a couple rows from small tables, and watch the output fly
   by in the window.
 
-You may find other demos in the 'lua' directory. The default is named
-'startup.lua' (I know, not very inventive). As of writing there's also
-'demo-direct.lua' which demos a simpler 1:1 connection mapping.
+You will find other demos in the 'lua' directory. The default is named
+'startup.lua' (I know, not very inventive).
 
 In order to start a different demo, run with the --startfile command and point
 to the file, ie:
@@ -79,4 +75,4 @@ keenly interested in hearing suggestions, directions, detailed bug reports,
 and ideas on how to fix bugs or add features.
 
 Drop an e-mail at dormando@rydia.net with your comments. I'm also on various
-chat services, livejournal, freenode IRC, etc.
+IM services, livejournal, freenode IRC, etc.
