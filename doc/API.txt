@@ -54,7 +54,8 @@ listener = dpm.listener("127.0.0.1", 3306)
 listen:register(dpm.MYC_CONNECT, new_3306_client)
 
 ... This means the function 'new_3306_client' will fire, with a new client
-object as an argument, when a mysql client connects to the proxy on localhost port 3306.
+object as an argument, when a mysql client connects to the proxy on localhost
+port 3306. Note that specifying nil instead of "127.0.0.1" will cause it to listen on all IP addresses.
 
 As long as the "listener" object exists and is open, clients may connect on
 that port. This flexibility allows some spiffy hacks:

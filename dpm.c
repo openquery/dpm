@@ -2540,8 +2540,15 @@ static int new_listener(lua_State *L)
     conn *listener;
     int flags = 1;
     int l_socket = 0;
-    const char *ip_addr = luaL_checkstring(L, 1);
-    int port_num        = (int)luaL_checkinteger(L, 2);
+    const char *ip_addr;
+    int port_num = (int)luaL_checkinteger(L, 2);
+
+    /* If nil is passed as the first argument, default to INADDR_ANY */
+    if (lua_isnil(L, 1)) {
+        ip_addr = NULL;
+    } else {
+        ip_addr = luaL_checkstring(L, 1);
+    }
 
     if ( (l_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
@@ -2555,7 +2562,12 @@ static int new_listener(lua_State *L)
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port_num);
-    addr.sin_addr.s_addr = inet_addr(ip_addr);
+
+    if (ip_addr) {
+        addr.sin_addr.s_addr = inet_addr(ip_addr);
+    } else {
+        addr.sin_addr.s_addr = INADDR_ANY;
+    }
 
     if (bind(l_socket, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         perror("binding server socket");

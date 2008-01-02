@@ -15,9 +15,7 @@ Blockers for release-6:
 
 - start test package (perl TAP? Probably)
 - coroutine demo
-- port to at least one other OS
 - support UDP sockets
-- support listening on INADDR_ANY
 
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
@@ -27,10 +25,11 @@ more libevent infrastructure; timers
 memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
 if buffer grows too big, shrink it after completing a write/read
-needs make-foo at some point. I tried, too lazy.
 non-parsing proxy mode to support a list of modes? any bugs?
 parsing code for COM_STATISTICS
 
+DONE ### port to at least one other OS
+DONE ### support listening on INADDR_ANY
 DONE ### test and use the luaobj 'flag' accessors
 DONE ### learn to handle large mysql packets (at least identify them, and bomb saying they're not supported)
 DONE ### better mechanism for detecting closed conn?
