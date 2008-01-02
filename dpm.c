@@ -2350,7 +2350,7 @@ static int run_lua_callback(conn *c, int nargs)
 
     /* Now the top o' the stack ought to be a function. */
     if (!lua_isfunction(L, -1)) {
-        fprintf(stderr, "ERROR: Callback should always be a function!");
+        fprintf(stderr, "ERROR: Callback is null or not a function!\n");
         lua_settop(L, 0);
         return 0;
     }
