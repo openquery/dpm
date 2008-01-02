@@ -65,7 +65,6 @@ int verbose      = 0;
 static void sig_hup(const int sig);
 int set_sock_nonblock(int fd);
 static int handle_accept(int fd);
-static void handle_close(conn *c);
 static int handle_read(conn *c);
 static int handle_write(conn *c);
 static conn *init_conn(int newfd);
@@ -236,7 +235,7 @@ static int handle_accept(int fd)
     return newfd;
 }
 
-static void handle_close(conn *c)
+void handle_close(conn *c)
 {
     conn *remote;
     assert(c != 0);
@@ -256,7 +255,7 @@ static void handle_close(conn *c)
 
     close(c->fd);
     if (verbose)
-        fprintf(stdout, "Closed connection for %llu\n", (unsigned long long) c->id);
+        fprintf(stdout, "Closed connection for %llu listener: %s\n", (unsigned long long) c->id, c->listener ? "yes" : "no");
     if (c->rbuf) free(c->rbuf);
     if (c->wbuf) free(c->wbuf);
     c->alive = 0;

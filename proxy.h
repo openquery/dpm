@@ -434,6 +434,8 @@ uint64_t my_read_binary_field(unsigned char *buf, int *base);
 int my_size_binary_field(uint64_t length);
 void my_write_binary_field(unsigned char *buf, int *base, uint64_t length);
 
+void handle_close(conn *c);
+
 /* Basic string buffering functions, which I can expand on later.
  */
 cbuffer_t *cbuffer_new(size_t len, const char *src);

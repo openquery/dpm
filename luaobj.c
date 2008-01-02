@@ -210,6 +210,10 @@ static int conn_gc(lua_State *L)
     conn **c;
     c = lua_touserdata(L, 1);
 
+    /* will be zero if connection has been closed already. */
+    if ((*c)->alive)
+        handle_close(*c);
+
     for (i = 0; i < TOTAL_STATES; i++) {
         if ((*c)->main_callback[i] != 0)
             luaL_unref(L, LUA_REGISTRYINDEX, (*c)->main_callback[i]);
