@@ -134,6 +134,8 @@ end
 
 -- Set up the listener, register a callback for new clients.
 listen = dpm.listener("127.0.0.1", 5500)
+-- Use this line to listen on a unix domain socket instead.
+-- listen = dpm.listener_unix("/tmp/dpmsock", "0770")
 listen:register(dpm.MYC_CONNECT, new_client)
 
 -- Fire off the backend. NOTE that this won't retry or event print decent

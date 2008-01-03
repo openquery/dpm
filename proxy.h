@@ -244,6 +244,11 @@ enum my_types {
     MY_CLIENT, /* Conn is a client connection */
 };
 
+enum dpm_listeners {
+    DPM_TCP  = 1,
+    DPM_UNIX,
+};
+
 #define DPM_OK 0
 #define DPM_NOPROXY 1
 #define DPM_FLUSH_DISCONNECT 2

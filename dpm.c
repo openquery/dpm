@@ -2534,10 +2534,75 @@ static int new_connect(lua_State *L)
     return 1;
 }
 
+static void _init_new_listener(int l_socket, int type)
+{
+    conn *listener = init_conn(l_socket);
+
+    listener->ev_flags = EV_READ | EV_PERSIST;
+
+    listener->listener = type;
+    listener->alive++;
+
+    event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
+    event_add(&listener->ev, NULL);
+
+    new_obj(L, listener, "dpm.conn");
+
+    return;
+}
+
+/* First arg is path, second arg is the mask. Path is non optional. */
+static int new_listener_unix(lua_State *L)
+{
+    struct sockaddr_un addr;
+    int flags = 1;
+    int l_socket = 0;
+    int mask = 0700;
+    struct stat mstat;
+    int prev_mask;
+    const char *spath = luaL_checkstring(L, 1);
+
+    if (!lua_isnoneornil(L, 2))
+        mask = strtol(luaL_checkstring(L, 2), NULL, 8);
+
+    if ( (l_socket = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        perror("unix socket");
+        return -1;
+    }
+    set_sock_nonblock(l_socket);
+    setsockopt(l_socket, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+    setsockopt(l_socket, SOL_SOCKET, SO_REUSEADDR, (void *)&flags, sizeof(flags));
+    
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, spath, 100); /* FIXME: Is UNIX_PATH_MAX portable? */
+    prev_mask = umask( ~(mask & 0777));
+
+    if (lstat(spath, &mstat) == 0 && S_ISSOCK(mstat.st_mode))
+        unlink(spath);
+
+    if (bind(l_socket, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("binding server socket");
+        close(l_socket);
+        umask(prev_mask);
+        return -1;
+    }
+
+    umask(prev_mask);
+    if (listen(l_socket, 1024) == -1) {
+        perror("setting listen on server socket");
+        close(l_socket);
+        return -1;
+    }
+
+    _init_new_listener(l_socket, DPM_UNIX);
+
+    return 1;
+}
+
 static int new_listener(lua_State *L)
 {
     struct sockaddr_in addr;
-    conn *listener;
     int flags = 1;
     int l_socket = 0;
     const char *ip_addr;
@@ -2581,17 +2646,7 @@ static int new_listener(lua_State *L)
         return -1;
     }
 
-    listener = init_conn(l_socket);
-
-    listener->ev_flags = EV_READ | EV_PERSIST;
-
-    listener->listener++;
-    listener->alive++;
-
-    event_set(&listener->ev, l_socket, listener->ev_flags, handle_event, (void *)listener);
-    event_add(&listener->ev, NULL);
-
-    new_obj(L, listener, "dpm.conn");
+    _init_new_listener(l_socket, DPM_TCP);
 
     return 1;
 }
@@ -2605,6 +2660,7 @@ int main (int argc, char **argv)
     struct sigaction sa;
     static const struct luaL_Reg dpm [] = {
         {"listener", new_listener},
+        {"listener_unix", new_listener_unix},
         {"connect", new_connect},
         {"close", close_conn},
         {"wire_packet", wire_packet},
