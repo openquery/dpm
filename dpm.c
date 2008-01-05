@@ -811,7 +811,7 @@ static int my_wire_handshake_packet(conn *c, void *pkt)
 void *my_new_handshake_packet()
 {
     my_handshake_packet *p;
-    int i;
+    int i; char next_rand;
  
     p = (my_handshake_packet *)malloc( sizeof(my_handshake_packet) );
     if (p == NULL) {
@@ -830,12 +830,9 @@ void *my_new_handshake_packet()
     p->server_language = 8;
     p->server_status = SERVER_STATUS_AUTOCOMMIT;
 
-    for (i = 0; i != SHA1_DIGEST_SIZE;) {
-        p->scramble_buff[i] = read(urandom_sock, p->scramble_buff + i, 1);
-
-        /* No nulls should exist within the scramble. */
-        if (p->scramble_buff[i] != '\0')
-            i++;
+    for (i = 0; i != SHA1_DIGEST_SIZE; i++) {
+        read(urandom_sock, &next_rand, 1);
+        p->scramble_buff[i] = next_rand * 94 + 33;
     }
 
     return p;
