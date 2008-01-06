@@ -1,21 +1,22 @@
 Blockers for release-5:
 
+- unix socket client support
+- microtime resolution checks
+- timer based callbacks
 - dpml function: client accept (auth, no auth)
 - dpml function: passthrough accept
 - dpml function: read resultset (+ get server flags, etc)
 - flush all connections which were written to during callback
+- Make stringified remote client IP available to lua
+
+Blockers for release-6:
+
 - pick one code style to clean up, and clean it
 - support at least COM_CHANGE_USER, COM_PING
 - Find out how to insert 'array' elements into a table. pushinteger appears to
   be using nrec elements in a table (see luaobj.c:_rset_parse_data)
-- Make stringified remote client IP available to lua
-- Backend crypto is _actually_ buggy. Restrict characters generated for hash.
-
-Blockers for release-6:
-
 - start test package (perl TAP? Probably)
 - coroutine demo
-- support UDP sockets
 
 WORK # write helper routines to serialize/deserialize length coded binaries
 WORK # write deserialize for fields and rows
