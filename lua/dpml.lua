@@ -85,7 +85,7 @@ local function cms_server_closed(cid)
     local dsn = conns[cid]["dsn"]
     conns[cid] = nil
 
-    return dsn.callback(nil, "DPM: Connection closed unexpectedly")
+    return dsn.callback(nil, "DPML: Connection closed unexpectedly")
 end
 
 -- Success! Clear the local values, unregister callbacks, and inform the
@@ -142,6 +142,9 @@ register_callbacks(connect_mysql_server_callbacks, {
 -- Takes: host, port, user, pass, db, callback
 function connect_mysql_server(t)
     local server = dpm.connect(t["host"], t["port"] and t["port"] or 3306)
+    if server == nil then
+        return t.callback(nil, "DPML: Could not establish connection")
+    end
     server:register(dpm.MY_CLOSING, cms_server_closed)
     server:package_register(connect_mysql_server_callbacks)
 

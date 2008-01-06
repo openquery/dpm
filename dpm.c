@@ -2514,7 +2514,9 @@ static int new_connect(lua_State *L)
     /* Lets try a nonblocking connect... */
     if (connect(outsock, (const struct sockaddr *)&dest_addr, sizeof(dest_addr)) == -1) {
         if (errno != EINPROGRESS) {
-            luaL_error(L, "Outbound socket goofup");
+            close(outsock);
+            lua_pushnil(L);
+            return 1;
         }
     }
 
