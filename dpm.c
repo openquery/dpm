@@ -458,6 +458,7 @@ static void handle_event(int fd, short event, void *arg)
 {
     conn *c = arg;
     conn *newc = NULL;
+    struct linger l = {0, 0};
     int newfd, rbytes, wbytes;
     int flags = 1;
     int err   = 0;
@@ -470,6 +471,7 @@ static void handle_event(int fd, short event, void *arg)
 
         set_sock_nonblock(newfd); /* error handling on this and below */
         setsockopt(newfd, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+        setsockopt(newfd, SOL_SOCKET, SO_LINGER, (void *)&l, sizeof(l));
         newc = init_conn(newfd);
 
         if (newc == NULL)
