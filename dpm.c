@@ -641,7 +641,7 @@ static void my_scramble(char *dst, const char *random, const char *pass)
     uint8_t hash1[SHA1_DIGEST_SIZE];
     uint8_t hash2[SHA1_DIGEST_SIZE];
     /* Make sure the null terminator's in the right spot. */
-    dst[SHA1_DIGEST_SIZE + 1] = '\0';
+    dst[SHA1_DIGEST_SIZE] = '\0';
 
     /* First hash the password. */
     sha1_init(&context);
@@ -949,7 +949,7 @@ void *my_new_auth_packet()
     p->charset_number = 8;
     strcpy(p->user, "root"); /* FIXME: Needs to be editable. */
     p->databasename = NULL; /* Don't need a default DB. */
-    p->scramble_buff[0] = '\0';
+    p->scramble_buff[20] = 1;
 
     return p;
 }
@@ -960,11 +960,11 @@ static int my_wire_auth_packet(conn *c, void *pkt)
     int psize = 32;
     size_t user_size = strlen(p->user) + 1;
     size_t dbname_size = 0;
-    size_t pass_size = strlen(p->scramble_buff);
     int base = c->towrite;
 
     /* password, or no password. */
-    psize += pass_size == SHA1_DIGEST_SIZE ? 21 : 1;
+    psize += p->scramble_buff[20] == '\0' ? 21 : 1;
+
     /* databasename, or no databasename. */
     if (p->databasename)
         dbname_size = strlen(p->databasename) + 1;
@@ -997,7 +997,7 @@ static int my_wire_auth_packet(conn *c, void *pkt)
     memcpy(&c->wbuf[base], p->user, user_size);
     base += user_size;
 
-    if (pass_size == SHA1_DIGEST_SIZE) {
+    if (p->scramble_buff[20] == '\0') {
         c->wbuf[base] = 20; /* Length of scramble buff. */
         base++;
         memcpy(&c->wbuf[base], p->scramble_buff, 20);
