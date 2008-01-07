@@ -141,7 +141,12 @@ register_callbacks(connect_mysql_server_callbacks, {
 -- it failed.
 -- Takes: host, port, user, pass, db, callback
 function connect_mysql_server(t)
-    local server = dpm.connect(t["host"], t["port"] and t["port"] or 3306)
+    local server
+    if t["path"] then
+        server = dpm.connect_unix(t["path"])
+    else
+        server = dpm.connect(t["host"], t["port"] and t["port"] or 3306)
+    end
     if server == nil then
         return t.callback(nil, "DPML: Could not establish connection")
     end
