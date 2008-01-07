@@ -2489,11 +2489,59 @@ static int wire_packet(lua_State *L)
     return 0;
 }
 
+static void _init_new_connect(int outsock)
+{
+    conn *c;
+
+    c = init_conn(outsock);
+
+    /* Special state for outbound requests. */
+    c->mystate = my_connect;
+    c->my_type = MY_SERVER;
+    c->alive++;
+
+    /* We watch for a write to this guy to see if it succeeds */
+    add_conn_event(c, EV_WRITE);
+
+    new_obj(L, c, "dpm.conn");
+
+    return;
+}
+
+/* Outbound connection function for unix sockets. */
+static int new_connect_unix(lua_State *L)
+{
+    int outsock;
+    struct sockaddr_un dest_addr;
+    int flags = 1;
+    const char *dpath = luaL_checkstring(L, 1);
+
+    outsock = socket(AF_UNIX, SOCK_STREAM, 0); /* check errors */
+    set_sock_nonblock(outsock); /* check errors */
+    setsockopt(outsock, IPPROTO_TCP, TCP_NODELAY, (void *)&flags, sizeof(flags));
+
+    memset(&dest_addr, 0, sizeof(dest_addr));
+    dest_addr.sun_family = AF_UNIX;
+    strncpy(dest_addr.sun_path, dpath, 100); /* FIXME: Is UNIX_PATH_MAX portable? */
+
+    /* Lets try a nonblocking connect... */
+    if (connect(outsock, (const struct sockaddr *)&dest_addr, sizeof(dest_addr)) == -1) {
+        if (errno != EINPROGRESS) {
+            close(outsock);
+            lua_pushnil(L);
+            return 1;
+        }
+    }
+
+    _init_new_connect(outsock);
+
+    return 1;
+}
+
 /* Outbound connection function */
 static int new_connect(lua_State *L)
 {
     int outsock;
-    conn *c;
     struct sockaddr_in dest_addr;
     int flags = 1;
     const char *ip_addr = luaL_checkstring(L, 1);
@@ -2520,17 +2568,7 @@ static int new_connect(lua_State *L)
         }
     }
 
-    c = init_conn(outsock);
-
-    /* Special state for outbound requests. */
-    c->mystate = my_connect;
-    c->my_type = MY_SERVER;
-    c->alive++;
-
-    /* We watch for a write to this guy to see if it succeeds */
-    add_conn_event(c, EV_WRITE);
-
-    new_obj(L, c, "dpm.conn");
+    _init_new_connect(outsock);
 
     return 1;
 }
@@ -2663,6 +2701,7 @@ int main (int argc, char **argv)
         {"listener", new_listener},
         {"listener_unix", new_listener_unix},
         {"connect", new_connect},
+        {"connect_unix", new_connect_unix},
         {"close", close_conn},
         {"wire_packet", wire_packet},
         {"check_pass", check_pass},
