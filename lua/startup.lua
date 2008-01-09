@@ -33,9 +33,11 @@ BACKEND_USERNAME = "happy"
 BACKEND_PASSWORD = "wheefun"
 
 function client_ok(cid)
-    print("Client ready! id: " .. cid)
-    -- Wipe any crazy callbacks. Act as a passthrough.
     local client = clients[cid]
+    local addr = client:socket_address()
+    print("Client ready! id: " .. cid)
+    if addr then print("Client IP: " .. addr) end
+    -- Wipe any crazy callbacks. Act as a passthrough.
     client:register(dpm.MYC_WAITING, nil)
     client:register(dpm.MYC_SENT_CMD, new_command)
     client:register(dpm.MY_CLOSING, client_closing)
@@ -133,10 +135,13 @@ function server_ready(server, err)
 end
 
 -- Set up the listener, register a callback for new clients.
+-- You may specify "dpm.INADDR_ANY" instead of "127.0.0.1" to listen on all
+-- addresses.
 listen = dpm.listener("127.0.0.1", 5500)
--- Use this line to listen on a unix domain socket instead.
--- listen = dpm.listener_unix("/tmp/dpmsock", "0770")
 listen:register(dpm.MYC_CONNECT, new_client)
+-- Uncomment these lines to also listen on a unix domain socket.
+-- listen2 = dpm.listener_unix("/tmp/dpmsock", "0770")
+-- listen2:register(dpm.MYC_CONNECT, new_client)
 
 -- Fire off the backend. NOTE that this won't retry or event print decent
 -- errors if it fails :)

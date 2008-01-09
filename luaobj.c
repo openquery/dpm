@@ -48,6 +48,7 @@ static int obj_callback_register(lua_State *L, void *var, void *var2);
 
 /* Special connection accessors. */
 static int obj_conn_package_register(lua_State *L, void *var, void *var2);
+static int obj_conn_socket_address(lua_State *L, void *var, void *var2);
 
 /* Resultset accessors. */
 static int obj_rset_field_count(lua_State *L, void *var, void *var2);
@@ -68,6 +69,7 @@ static const obj_reg conn_regs [] = {
     {"my_type", obj_uint8_t, LO_READONLY, offsetof(conn, my_type), 0},
     {"register", obj_callback_register, LO_READWRITE, offsetof(conn, main_callback), 0},
     {"package_register", obj_conn_package_register, LO_READWRITE, offsetof(conn, package_callback), 0},
+    {"socket_address", obj_conn_socket_address, LO_READONLY, offsetof(conn, fd), 0},
     {NULL, NULL, 0, 0, 0},
 };
 
@@ -264,6 +266,27 @@ void dump_stack()
 }
 
 /* Accessor functions */
+static int obj_conn_socket_address(lua_State *L, void *var, void *var2)
+{
+    int *fd = var;
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+
+    if (getpeername(*fd, (struct sockaddr *) &addr, &addr_len) != 0) {
+        perror("getpeername()");
+        lua_pushnil(L);
+        return 1;
+    }
+
+    if (addr_len == 0 || addr.sin_family == AF_UNIX) {
+        lua_pushstring(L, "localhost");
+    } else if (addr.sin_family == AF_INET) {
+        lua_pushstring(L, inet_ntoa(addr.sin_addr));
+    } else {
+        lua_pushnil(L);
+    }
+    return 1;
+}
 
 static int obj_conn_package_register(lua_State *L, void *var, void *var2)
 {
