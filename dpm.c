@@ -483,9 +483,11 @@ static void handle_event(int fd, short event, void *arg)
 
         /* Pass the object up into lua for later inspection. */
         new_obj(L, newc, "dpm.conn");
+        /* And the id of our listener object. */
+        lua_pushinteger(L, c->id);
 
         c->dpmstate = MYC_CONNECT;
-        run_lua_callback(c, 1);
+        run_lua_callback(c, 2);
 
         /* The callback might've written packets to the wire. */
         if (newc->towrite) {

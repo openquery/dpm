@@ -71,9 +71,9 @@ function client_got_auth(auth_pkt, cid)
     storage[cid] = nil
 end
 
-function new_client(c)
+function new_client(c, lid)
     -- "c" is a new listening connection object.
-    print("It's a new client! id: " .. c:id())
+    print("It's a new client! id: " .. c:id() .. " from listener id: " .. lid)
     clients[c:id()] = c -- Prevent client from being garbage collected
     c:register(dpm.MYC_WAITING, client_got_auth)
 
