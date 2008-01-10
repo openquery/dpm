@@ -1,76 +1,29 @@
 Blockers for release-5:
 
-- unix socket client support
 - microtime resolution checks
 - timer based callbacks
 - dpml function: client accept (auth, no auth)
 - dpml function: passthrough accept
 - dpml function: read resultset (+ get server flags, etc)
 - flush all connections which were written to during callback
-- Make stringified remote client IP available to lua
 
 Blockers for release-6:
 
 - pick one code style to clean up, and clean it
 - support at least COM_CHANGE_USER, COM_PING
+- parsing code for COM_STATISTICS
 - Find out how to insert 'array' elements into a table. pushinteger appears to
   be using nrec elements in a table (see luaobj.c:_rset_parse_data)
 - start test package (perl TAP? Probably)
 - coroutine demo
 
-WORK # write helper routines to serialize/deserialize length coded binaries
-WORK # write deserialize for fields and rows
 can probably force "max buffer size" of MAX_PACKET_SIZE. write some logic for
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc
-more libevent infrastructure; timers
 memory management; caching connection structs. malloc big range. reuse buffers.
 not all of the state machine names make sense; clean it up.
-if buffer grows too big, shrink it after completing a write/read
-non-parsing proxy mode to support a list of modes? any bugs?
-parsing code for COM_STATISTICS
+use dynamic network buffers instead of connection-static buffers. figure best
+scatter/gather technique
 
-DONE ### port to at least one other OS
-DONE ### support listening on INADDR_ANY
-DONE ### test and use the luaobj 'flag' accessors
-DONE ### learn to handle large mysql packets (at least identify them, and bomb saying they're not supported)
-DONE ### better mechanism for detecting closed conn?
-DONE ### ability to fully modify, luaize, and return custom query resultsets
-DONE ### Pass internal defines up into lua from within the C program, if possible.
-DONE ### support the COM_STATISTICS result packet, so \s works.
-DONE ### Non-parsing "proxy" mode (optional)
-DONE ### (start to) write packet-free routines. Clean up the memory leak I
-         created. '__gc' verified as working.
-DONE ### Shut up the verbosity. Add -v or -d flag to make some of it come back
-DONE ### getopt support for specifying lua startup file
-DONE ### Garbage collect packets
-DONE ### Strings are mutable
-DONE ### Create command packet so lua may at least inspect in-flight SQL
-DONE ### Really need a callback on handle_close, feels like a bug without it.
-DONE ### implement mysql's password crypto handshake
-DONE ### use struct buffer sizes from mysql_com.h
-DONE ### flesh out obj_index to handle read/write correctly.
-DONE ### add read/write defines
 DONE ## create working accessors for int, uint64_t, uint32_t, enum flag, bit flag
 WORK ## create working accessors for uint16_t, uint8_t, null terminated strings
 WORK ## create working accessor for length encoded strings
-WORK ## attach __gc methods to free objects
-DONE ### move con and definition structures to toast.h
-DONE ### fix username reading; add +1 to my_size so it gets the \0
-DONE ### use multiple .c files to make the program.
-DONE ### pull in as many GPL'ed defines as possible, write own for others.
-DONE ### create packet header with a ptype enum, func ptr to free, tobuf, tolua/fromlua
-DONE ### redo packet state machine to do proper state transitions when packets are _sent_ to a remote host.
-DONE ### figure out how to free if (ptr == NULL) { don'tfree } correctly
-DONE ### set libevent to listen on socket with callback, accept sockets.
-DONE ### signal ignore sigpipe
-DONE ### handle reading data on socket, printing locally.
-DONE ### handle SIGHUP
-DONE ### handle writing data back to socket
-NAH  ### try basic ragel implementation to handle reading/writing commands
-WORK # embed lua; pass input commands to lua, allow callback to set config vars
-DONE ### proper read/write buffering for event sockets.
-DONE ### outbound connection support. non-block connect()
-DONE ### Full proxy support; must recognize mysql packets?
-DONE ### write buffer resizing for large packets.
-DONE ### (fixed some nice bugs) test running two connections at once
-DONE ### learn about the authentication packets. print out the known data.
