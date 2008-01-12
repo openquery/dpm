@@ -295,6 +295,9 @@ typedef struct {
     int main_callback[25]; /* Each connection can be different. */
     int *package_callback; /* ... and packages may take over.   */
     int package_callback_ref; /* Reference to the callback object. */
+
+    /* Allow connections to be chained into linked lists. */
+    struct conn *nextconn;
 } conn;
 
 /* This fits into connection object. */

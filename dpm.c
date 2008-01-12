@@ -56,10 +56,16 @@ const char *my_state_name[]={
     "Server sent fields",
 };
 
+/* Global structures/values. These will need to be thread local. */
+
 struct lua_State *L;
 
 int urandom_sock = 0;
 int verbose      = 0;
+
+/* Track connections which have had their write buffers appended to.
+ * This is walked during run_protocol() */
+conn *dpm_conn_flush_list = NULL;
 
 /* Declarations */
 static void sig_hup(const int sig);
@@ -166,6 +172,14 @@ inline size_t cbuffer_size(cbuffer_t *buf)
 inline const char *cbuffer_data(cbuffer_t *buf)
 {
     return buf->data;
+}
+
+/* Stack a connection for flushing later. */
+static void _dpm_add_to_flush_list(conn *c)
+{
+    if (dpm_conn_flush_list)
+        c->nextconn = (struct conn *)dpm_conn_flush_list;
+    dpm_conn_flush_list = c;
 }
 
 /* Stub function. In the future, should set a flag to reload or dump stuff */
@@ -423,6 +437,7 @@ static conn *init_conn(int newfd)
     newc->last_cmd    = 0;
     newc->packet_seq  = 0;
     newc->listener    = 0;
+    newc->nextconn    = NULL;
 
     /* Set up the buffers. */
     newc->rbufsize = BUF_SIZE;
@@ -1963,7 +1978,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     int ret = 0;
 
     #ifdef DBUG
-    fprintf(stdout, "TX START State: %s\n", my_state_name[c->dpmstate]);
+    fprintf(stdout, "TX START State: [%llu] %s\n", (unsigned long long) c->id, my_state_name[c->dpmstate]);
     #endif
     /* This might be overridden during processing, so increase it up here */
     c->packet_seq++;
@@ -2003,7 +2018,7 @@ static int sent_packet(conn *c, void **p, int ptype, int field_count)
     }
 
     #ifdef DBUG
-    fprintf(stdout, "TX END State: %s\n", my_state_name[c->dpmstate]);
+    fprintf(stdout, "TX END State: [%llu] %s\n", (unsigned long long) c->id, my_state_name[c->dpmstate]);
     #endif
     if (CALLBACK_AVAILABLE(c)) {
         run_lua_callback(c, 0);
@@ -2020,7 +2035,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     int nargs = 0;
     pkt_func consumer = NULL;
     #ifdef DBUG
-    fprintf(stdout, "RX START State: %s\n", my_state_name[c->dpmstate]);
+    fprintf(stdout, "RX START State: [%llu] %s\n", (unsigned long long) c->id, my_state_name[c->dpmstate]);
     #endif
 
     /* Default *p to NULL */
@@ -2178,8 +2193,10 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
         case MYS_WAIT_CMD:
             /* Should never get here! Server must have a command when sending
              * results!
+             * NOTE: Sometimes _does_ get here if we're sending multiple
+             * commands down the pipe at once. Lets leave this open for now.
              */
-            assert(1 == 0);
+            /*assert(1 == 0);*/
             break;
         }
 
@@ -2201,7 +2218,7 @@ static int received_packet(conn *c, void **p, int *ptype, int field_count)
     }
 
     #ifdef DBUG
-    fprintf(stdout, "RX END State: %s\n", my_state_name[c->dpmstate]);
+    fprintf(stdout, "RX END State: [%llu] %s\n", (unsigned long long) c->id, my_state_name[c->dpmstate]);
     #endif
     return nargs;
 }
@@ -2278,12 +2295,7 @@ static int run_protocol(conn *c, int read, int written)
                 /* We track our own sequence, so overwrite what's there. */
                 int1store(&remote->wbuf[remote->towrite + 3], remote->packet_seq - 1);
                 remote->towrite += c->packetsize;
-            } else if ( c->remote && ( cbret == DPM_NOPROXY ) ) {
-                /* Condition to flush what was written, but don't proxy
-                 * the last packet in the pipeline
-                 */
-                    
-                remote = (conn *)c->remote;
+                _dpm_add_to_flush_list(remote);
             }
 
             /* Flush (above) and disconnect the conns */
@@ -2298,11 +2310,15 @@ static int run_protocol(conn *c, int read, int written)
         if (c == NULL)
             break;
 
-        if (c->towrite && handle_write(c) == -1)
-            return -1;
-
-        if (remote && handle_write(remote) == -1)
-            return -1;
+        /* Reuse the remote pointer and flip through the list of connections
+         * to flush. */
+        while (dpm_conn_flush_list) {
+            handle_write(dpm_conn_flush_list);
+            remote = (conn *)dpm_conn_flush_list->nextconn;
+            dpm_conn_flush_list->nextconn = NULL;
+            dpm_conn_flush_list = (conn *)remote;
+        }
+        dpm_conn_flush_list = NULL;
 
         /* Any pending packet reads? If none, reset boofer. */
         if (c->readto == c->read) {
@@ -2481,6 +2497,10 @@ static int wire_packet(lua_State *L)
     p = lua_touserdata(L, 2);
 
     (*p)->h.to_buf(*c, *p);
+
+    /* Link up connections which will need buffers flushed. */
+    _dpm_add_to_flush_list(*c);
+
     if (verbose)
         fprintf(stdout, "Wrote packet of type [%d] to sock [%llu] with server type [%d]\n", (*p)->h.ptype, (unsigned long long)(*c)->id, (*c)->my_type);
 
