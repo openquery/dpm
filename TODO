@@ -1,11 +1,8 @@
 Blockers for release-5:
 
-- microtime resolution checks
-- timer based callbacks
 - dpml function: client accept (auth, no auth)
 - dpml function: passthrough accept
 - dpml function: read resultset (+ get server flags, etc)
-- flush all connections which were written to during callback
 
 Blockers for release-6:
 
