@@ -305,6 +305,15 @@ typedef struct {
     int callback[25];
 } my_callback_obj;
 
+/* Periodic (or onetime) timed event callbacks. */
+typedef struct {
+    struct event evtimer;
+    struct timeval interval;
+    int    self; /* lua reference to our own object. */
+    int    callback; /* lua reference to the callback function. */
+    int    arg; /* lua reference of object to return. */
+} my_timer_obj;
+
 typedef struct {
     int ptype;
     void    (*free_me) (void *p);

@@ -28,6 +28,8 @@ require "dpml"
 clients  = {}
 storage  = {}
 bench    = {}
+-- Count of queries ran through system.
+queries  = {["count"] = 0}
 
 passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
 BACKEND_USERNAME = "happy"
@@ -90,6 +92,9 @@ function new_command(cmd_pkt, cid)
     print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
     -- Start the timer.
     bench["millis"] = dpm.time_hires()
+    -- Up the counter
+    queries["count"] = queries["count"] + 1
+
     if (cmd_pkt:command() == dpm.COM_QUIT) then
         -- allow the client to close, but don't close the server.
         return dpm.DPM_NOPROXY
@@ -139,6 +144,11 @@ function server_ready(server, err)
                            })
 end
 
+-- 'self' is the timer argument. To stop the timer you can run self:cancel()
+function print_status(self, arg)
+    print("STATUS UPDATE: I have ran " .. arg["count"] .. " queries.")
+end
+
 -- Set up the listener, register a callback for new clients.
 -- You may specify "dpm.INADDR_ANY" instead of "127.0.0.1" to listen on all
 -- addresses.
@@ -147,6 +157,10 @@ listen:register(dpm.MYC_CONNECT, new_client)
 -- Uncomment these lines to also listen on a unix domain socket.
 -- listen2 = dpm.listener_unix("/tmp/dpmsock", "0770")
 -- listen2:register(dpm.MYC_CONNECT, new_client)
+
+-- Example of the timer interface. Every five seconds, print a count.
+timer = dpm.new_timer()
+timer:schedule(5, 0, print_status, queries)
 
 -- Fire off the backend. NOTE that this won't retry or event print decent
 -- errors if it fails :)

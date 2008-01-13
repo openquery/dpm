@@ -24,6 +24,7 @@
 /* Forward declarations */
 static int conn_gc(lua_State *L);
 static int callback_gc(lua_State *L);
+static int timer_gc(lua_State *L);
 static int packet_gc(lua_State *L);
 
 static int  obj_index(lua_State *L);
@@ -42,7 +43,14 @@ static int obj_uint32_t(lua_State *L, void *var, void *var2);
 static int obj_uint16_t(lua_State *L, void *var, void *var2);
 static int obj_uint8_t(lua_State *L, void *var, void *var2);
 
+/* Lua-centric object generators. */
 void *my_new_callback_object();
+void *my_new_timer_object();
+
+/* Callback timer accessors */
+static int obj_timer_schedule(lua_State *L, void *var, void *var2);
+static int obj_timer_cancel(lua_State *L, void *var, void *var2);
+
 /* Package callback accessors. */
 static int obj_callback_register(lua_State *L, void *var, void *var2);
 
@@ -158,6 +166,12 @@ static const obj_reg callback_regs [] = {
     {NULL, NULL, 0, 0, 0},
 };
 
+static const obj_reg timer_regs [] = {
+    {"schedule", obj_timer_schedule, LO_READWRITE, offsetof(my_timer_obj, evtimer), 0},
+    {"cancel", obj_timer_cancel, LO_READWRITE, offsetof(my_timer_obj, evtimer), 0},
+    {NULL, NULL, 0, 0, 0},
+};
+
 static const luaL_Reg generic_m [] = {
     {"__gc", packet_gc},
     {NULL, NULL},
@@ -173,6 +187,11 @@ static const luaL_Reg callback_m [] = {
     {NULL, NULL},
 };
 
+static const luaL_Reg timer_m [] = {
+    {"__gc", timer_gc},
+    {NULL, NULL},
+};
+
 static const obj_toreg regs [] = {
     {"dpm.conn", conn_regs, conn_m, NULL, NULL},
     {"dpm.handshake", handshake_regs, generic_m, my_new_handshake_packet, "new_handshake_pkt"},
@@ -185,6 +204,7 @@ static const obj_toreg regs [] = {
     {"dpm.row", row_regs, generic_m, my_new_row_packet, "new_row_pkt"},
     {"dpm.eof", eof_regs, generic_m, my_new_eof_packet, "new_eof_pkt"},
     {"dpm.callback", callback_regs, callback_m, my_new_callback_object, "new_callback"},
+    {"dpm.timer", timer_regs, timer_m, my_new_timer_object, "new_timer"},
     {NULL, NULL, NULL, NULL, NULL},
 };
 
@@ -198,6 +218,20 @@ void *my_new_callback_object()
         return NULL;
     }
     memset(o, 0, sizeof(my_callback_obj));
+
+    return o;
+}
+
+void *my_new_timer_object()
+{
+    my_timer_obj *o;
+
+    o = malloc( sizeof(my_timer_obj) );
+    if (o == NULL) {
+        perror("Could not malloc()");
+        return NULL;
+    }
+    memset(o, 0, sizeof(my_timer_obj));
 
     return o;
 }
@@ -243,6 +277,20 @@ static int callback_gc(lua_State *L)
     return 0;
 }
 
+/* Timers might have a reference, so they get their own gc */
+static int timer_gc(lua_State *L)
+{
+    my_timer_obj **o;
+    o = lua_touserdata(L, 1);
+
+    if ((*o)->arg) {
+        luaL_unref(L, LUA_REGISTRYINDEX, (*o)->arg);
+    }
+    free(*o);
+
+    return 0;
+}
+
 static int packet_gc(lua_State *L)
 {
     my_packet_fuzz **p;
@@ -266,6 +314,93 @@ void dump_stack()
 }
 
 /* Accessor functions */
+
+void _obj_timer_cancel(my_timer_obj *o)
+{
+    evtimer_del(&o->evtimer);
+    if (o->self)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
+    if (o->callback)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
+    if (o->arg)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
+
+    o->self = o->callback = o->arg = 0;
+}
+
+void _obj_timer_run(const int fd, const short which, void *arg)
+{
+    my_timer_obj *o = (my_timer_obj *) arg;
+    int n = 1;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->callback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->self);
+    if (o->arg) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, o->arg);
+        n++;
+    }
+    if (lua_pcall(L, n, 1, 0) != 0) {
+        /* Error running the callback. Bitch and unschedule.
+         * TODO: Replace this useless fprintf with a global error handler?
+         */
+        fprintf(stderr, "ERROR: cancelling timer: %s\n", lua_tostring(L, -1));
+        lua_pop(L, -1);
+        _obj_timer_cancel(o);
+    } else if (o->self) {
+        /* We might've been cancelled during the run. */
+        evtimer_del(&o->evtimer);
+        evtimer_set(&o->evtimer, _obj_timer_run, o);
+        evtimer_add(&o->evtimer, &o->interval);
+        lua_settop(L, 0);
+    }
+}
+
+static int obj_timer_cancel(lua_State *L, void *var, void *var2)
+{
+    my_timer_obj *o = var2;
+    _obj_timer_cancel(o);
+    return 0;
+}
+
+static int obj_timer_schedule(lua_State *L, void *var, void *var2)
+{
+    my_timer_obj *o = var2;
+    
+    if (lua_gettop(L) != 5)
+        return luaL_error(L, "Wrong number of arguments");
+
+    /* Populate our timer structure from arguments. Don't take multiple
+     * references by accident. */
+    if (o->self == 0) {
+        lua_pushvalue(L, 1);
+        o->self = luaL_ref(L, LUA_REGISTRYINDEX);
+    } else {
+        return luaL_error(L, "Must cancel timer before rescheduling");
+    }
+
+    o->interval.tv_sec  = luaL_checkinteger(L, 2);
+    /* API is expoed in milliseconds. */
+    o->interval.tv_usec = luaL_checkinteger(L, 3) * 1000;
+    if (lua_isfunction(L, 4)) {
+        lua_pushvalue(L, 4);
+        o->callback = luaL_ref(L, LUA_REGISTRYINDEX);
+    } else {
+        return luaL_error(L, "Callback argument must be a function");
+    }
+    luaL_checkany(L, 5);
+    if (lua_isnil(L, 5)) {
+        o->arg = 0;
+    } else {
+        o->arg = luaL_ref(L, LUA_REGISTRYINDEX);
+    }
+
+    /* Actually schedule the event via libevent. */
+    evtimer_set(&o->evtimer, _obj_timer_run, o);
+    evtimer_add(&o->evtimer, &o->interval);
+
+    return 0;
+}
+
 static int obj_conn_socket_address(lua_State *L, void *var, void *var2)
 {
     int *fd = var;
