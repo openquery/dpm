@@ -238,7 +238,6 @@ void *my_new_timer_object()
 
 /* Nothing special for now. This ensures we don't segfault when calling the
  * packet gc on a connection obj.
- * TODO: Should check if conn is alive, and handle_close it if so.
  */
 static int conn_gc(lua_State *L)
 {
@@ -379,7 +378,7 @@ static int obj_timer_schedule(lua_State *L, void *var, void *var2)
     }
 
     o->interval.tv_sec  = luaL_checkinteger(L, 2);
-    /* API is expoed in milliseconds. */
+    /* API is exposed in milliseconds. */
     o->interval.tv_usec = luaL_checkinteger(L, 3) * 1000;
     if (lua_isfunction(L, 4)) {
         lua_pushvalue(L, 4);
