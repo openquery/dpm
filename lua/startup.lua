@@ -27,6 +27,7 @@ require "dpml"
 
 clients  = {}
 storage  = {}
+bench    = {}
 
 passdb   = {["whee"] = "09A4298405EF045A61DB26DF8811FEA0E44A80FD"}
 BACKEND_USERNAME = "happy"
@@ -87,6 +88,8 @@ end
 
 function new_command(cmd_pkt, cid)
     print("Proxying command: " .. cmd_pkt:argument() .. " : " .. cmd_pkt:command())
+    -- Start the timer.
+    bench["millis"] = dpm.time_hires()
     if (cmd_pkt:command() == dpm.COM_QUIT) then
         -- allow the client to close, but don't close the server.
         return dpm.DPM_NOPROXY
@@ -102,7 +105,9 @@ function new_command(cmd_pkt, cid)
 end
 
 function finished_command(cid)
-    print "Backend completed handling command."
+    -- Figure out how long it took.
+    local milli_lapsed = dpm.time_hires() - bench["millis"]
+    print("Backend completed command in " .. milli_lapsed .. "ms")
     return dpm.DPM_FLUSH_DISCONNECT
 end
 

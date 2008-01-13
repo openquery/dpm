@@ -2483,6 +2483,37 @@ static int proxy_disconnect(lua_State *L)
     return 0;
 }
 
+/* We provide three timer functions. One mimics gettimeofday and returns time,
+ * microtime separately. Returns seconds, microseconds.
+ * FIXME: Is pushinteger good enough? pushnumber uses double...
+ */
+static int dpm_gettimeofday(lua_State *L)
+{
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    lua_pushinteger(L, t.tv_sec);
+    lua_pushinteger(L, t.tv_usec);
+    return 2;
+}
+
+/* ... returns seconds. */
+static int dpm_time(lua_State *L)
+{
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    lua_pushinteger(L, t.tv_sec);
+    return 1;
+}
+
+/* Returns the current time in milliseconds. */
+static int dpm_time_hires(lua_State *L)
+{
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    lua_pushinteger(L, (t.tv_usec / 1000) + (t.tv_sec * 1000) );
+    return 1;
+}
+
 /* LUA command for wiring a packet into a connection. */
 static int wire_packet(lua_State *L)
 {
@@ -2730,6 +2761,9 @@ int main (int argc, char **argv)
         {"crypt_pass", crypt_pass},
         {"proxy_connect", proxy_connect},
         {"proxy_disconnect", proxy_disconnect},
+        {"gettimeofday", dpm_gettimeofday},
+        {"time", dpm_time},
+        {"time_hires", dpm_time_hires},
         {NULL, NULL},
     };
     /* Argument parsing helper. */
