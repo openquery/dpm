@@ -749,7 +749,7 @@ static int _rset_parse_data(my_rset_packet *rset, int type)
 
         /* Push the index for the next value. */
         if (type == 0) {
-            lua_pushinteger(L, i);
+            lua_pushinteger(L, i + 1);
         } else {
             lua_pushlstring(L, (char *) rset->fields[i].f->name,
                                (size_t) rset->fields[i].f->name_len);

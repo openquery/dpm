@@ -23,6 +23,9 @@ local table = table
 local pairs = pairs
 local print = print
 local unpack = unpack
+local type = type
+local io = io
+local error = error
 module(...)
 
 -- "local function blah" private
@@ -73,6 +76,79 @@ function send_error(c, state, errnum, message)
     err_pkt:errnum(errnum)
     err_pkt:message(message)
     dpm.wire_packet(c, err_pkt)
+end
+
+--
+-- Routines for buffering resultsets
+--
+
+local function br_read_rset(rset, cid)
+    local br = conns[cid]
+    br["br_rset"] = rset
+    return dpm.DPM_NOPROXY
+end
+
+local function br_read_fields(field, cid)
+    local rset = conns[cid]["br_rset"]
+    rset:add_field(field)
+    local fname, ftype = field:name()
+    table.insert(conns[cid]["br_res"]["fields"], { type = ftype, name = fname })
+    return dpm.DPM_NOPROXY
+end
+
+local function br_read_rows(row, cid)
+    local br = conns[cid]
+    local rset = conns[cid]["br_rset"]
+    table.insert(br["br_res"]["rows"], rset:parse_row_array(row))
+    return dpm.DPM_NOPROXY
+end
+
+local function br_read_finish(eof, cid)
+    local br     = conns[cid]
+    local server = conns[cid]["conn"]
+    server:package_register(nil)
+    conns[cid] = nil
+    br.br_cb(cid, br["br_q"], br["br_res"], nil)
+    return dpm.DPM_NOPROXY
+end
+
+local function br_read_error(err, cid)
+    local br = conns[cid]
+    conns[cid] = nil
+    br.br_cb(cid, br["br_q"], nil, err)
+    return dpm.DPM_NOPROXY
+end
+
+local br_callbacks = dpm.new_callback()
+register_callbacks(br_callbacks, {
+                   [dpm.MYS_SENT_RSET]      = br_read_rset,
+                   [dpm.MYS_SENDING_FIELDS] = br_read_fields,
+                   [dpm.MYS_SENDING_ROWS]   = br_read_rows,
+                   [dpm.MYS_WAIT_CMD]       = br_read_finish,
+                   [dpm.MYS_RECV_ERR]       = br_read_error,
+                   })
+
+-- Buffer a resultset then return it to callback function.
+-- FIXME: This will "leak" memory in the `conns` structure if the server
+-- is closed before resultset buffering is completed.
+function execute_query_buffered(server, query, callback)
+    -- Do the right thing if we're passed a string.
+    local p = type(query)
+    if p == "string" then
+        local q = dpm.new_cmd_pkt()
+        q:command(3)
+        q:argument(query)
+        query = q
+    elseif p ~= "userdata" then
+        error("DPML: Query must be string or cmd packet")
+    end
+    conns[server:id()] = { br_cb = callback, br_q = query, conn = server,
+                           br_res = { fields = {}, rows = {} }
+                         }
+    server:package_register(br_callbacks)
+
+    -- 'query' should be a pre-populated command. Wire it along.
+    dpm.wire_packet(server, query)
 end
 
 --
@@ -156,3 +232,27 @@ function connect_mysql_server(t)
     conns[server:id()] = { conn = server, dsn = t }
 end
 
+---
+--- Utility functions
+---
+
+-- Stupid data dumper.
+function dump_table(t, i)
+    -- FIXME: I know there's a better way to do a stupid for.
+    local n = 0
+    if i == nil then i = 0 else n = i end
+    for k, v in pairs(t) do
+        n = i
+        while n > 0 do
+            n = n - 1
+            io.write("\t")
+        end
+        local p = type(v)
+        if (p == "table") then
+            io.write(p .. " " .. k .. "\n")
+            dump_table(v, i + 1)
+        else
+            io.write(p .. " " .. k .. ": " .. v .. "\n")
+        end
+    end
+end
