@@ -160,7 +160,7 @@ listen:register(dpm.MYC_CONNECT, new_client)
 
 -- Example of the timer interface. Every five seconds, print a count.
 timer = dpm.new_timer()
-timer:schedule(5, 0, print_status, queries)
+timer:schedule(45, 0, print_status, queries)
 
 -- Fire off the backend. NOTE that this won't retry or event print decent
 -- errors if it fails :)
