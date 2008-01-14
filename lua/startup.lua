@@ -158,7 +158,7 @@ listen:register(dpm.MYC_CONNECT, new_client)
 -- listen2 = dpm.listener_unix("/tmp/dpmsock", "0770")
 -- listen2:register(dpm.MYC_CONNECT, new_client)
 
--- Example of the timer interface. Every five seconds, print a count.
+-- Example of the timer interface. Every few seconds, print a count.
 timer = dpm.new_timer()
 timer:schedule(45, 0, print_status, queries)
 
