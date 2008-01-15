@@ -29,7 +29,7 @@
 
 #define BUF_SIZE 2048
 
-#define VERSION "4"
+#define VERSION "5"
 
 const char *my_state_name[]={
     "Server connect", 

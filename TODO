@@ -1,18 +1,19 @@
-Blockers for release-5:
+Blockers for release-6:
 
 - dpml function: client accept (auth, no auth)
 - dpml function: passthrough accept
-- dpml function: read resultset (+ get server flags, etc)
-
-Blockers for release-6:
-
-- pick one code style to clean up, and clean it
 - support at least COM_CHANGE_USER, COM_PING
 - parsing code for COM_STATISTICS
 - Find out how to insert 'array' elements into a table. pushinteger appears to
   be using nrec elements in a table (see luaobj.c:_rset_parse_data)
 - start test package (perl TAP? Probably)
 - coroutine demo
+
+Blockers for release-7:
+
+- more testing framework
+- pick one code style to clean up, and clean it
+- add more dpml functions. work on reducing the demos to minimal code.
 
 can probably force "max buffer size" of MAX_PACKET_SIZE. write some logic for
 look up TCP options.. SO_KEEPALIVE, SO_LINGER, etc

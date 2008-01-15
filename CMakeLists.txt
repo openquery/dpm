@@ -14,6 +14,9 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-unused-parameter")
 if(DEBUG)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
     message("Compiling in debug mode")
+else(DEBUG)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2")
+    message("Compiling in optimized mode")
 endif(DEBUG)
 
 #
