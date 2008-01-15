@@ -236,6 +236,21 @@ void *my_new_timer_object()
     return o;
 }
 
+/* Helper functions for garbage collectors and accessors. */
+
+void _obj_timer_cancel(my_timer_obj *o)
+{
+    if (o->self) {
+        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
+        evtimer_del(&o->evtimer);
+    }
+    if (o->callback)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
+    if (o->arg)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
+
+    o->self = o->callback = o->arg = 0;
+}
 /* Nothing special for now. This ensures we don't segfault when calling the
  * packet gc on a connection obj.
  */
@@ -281,10 +296,7 @@ static int timer_gc(lua_State *L)
 {
     my_timer_obj **o;
     o = lua_touserdata(L, 1);
-
-    if ((*o)->arg) {
-        luaL_unref(L, LUA_REGISTRYINDEX, (*o)->arg);
-    }
+    _obj_timer_cancel(*o);
     free(*o);
 
     return 0;
@@ -314,18 +326,7 @@ void dump_stack()
 
 /* Accessor functions */
 
-void _obj_timer_cancel(my_timer_obj *o)
-{
-    evtimer_del(&o->evtimer);
-    if (o->self)
-        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
-    if (o->callback)
-        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
-    if (o->arg)
-        luaL_unref(L, LUA_REGISTRYINDEX, o->self);
 
-    o->self = o->callback = o->arg = 0;
-}
 
 void _obj_timer_run(const int fd, const short which, void *arg)
 {
