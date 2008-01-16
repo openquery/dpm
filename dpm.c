@@ -2773,6 +2773,7 @@ int main (int argc, char **argv)
         {"startfile", 1, 0, 's'},
         {"verbose", 2, 0, 'v'},
         {"help", 3, 0, 'h'},
+        {0, 0, 0, 0},
     };
 
     /* Init /dev/urandom socket... */
