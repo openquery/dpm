@@ -242,9 +242,7 @@ function dump_table(t, i)
     local n = 0
     if i == nil then i = 0 else n = i end
     for k, v in pairs(t) do
-        n = i
-        while n > 0 do
-            n = n - 1
+        for n=i,0,-1 do
             io.write("\t")
         end
         local p = type(v)
