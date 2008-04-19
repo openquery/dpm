@@ -54,7 +54,6 @@
 /* Public domain MySQL defines from mysqlnd's portability.h */
 #include "portability.h"
 
-/* MySQL defines from mysql_com.h - It's GPL! */
 #define SERVER_STATUS_IN_TRANS     1    /* Transaction has started */
 #define SERVER_STATUS_AUTOCOMMIT   2    /* Server in auto_commit mode */
 #define SERVER_MORE_RESULTS_EXISTS 8    /* Multi query - next query exists */
@@ -180,8 +179,6 @@ enum my_field_types {
     MYSQL_TYPE_STRING=254,
     MYSQL_TYPE_GEOMETRY=255
 };
-
-/* End defines from mysql_com.h */
 
 /* Defines which were not yanked. */
 #define MYSQL_NULL (uint64_t) ~0

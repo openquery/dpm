@@ -626,7 +626,6 @@ int my_size_binary_field(uint64_t length)
     return 9;
 }
 
-/* Mostly from sql/password.c in mysqld */
 static uint8_t my_char_val(uint8_t X)
 {
   return (unsigned int) (X >= '0' && X <= '9' ? X-'0' :
@@ -646,7 +645,7 @@ static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2
 {
   const uint8_t *s1_end= s1 + len;
   while (s1 < s1_end)
-    *dst++= *s1++ ^ *s2++;
+    *dst++ = *s1++ ^ *s2++;
 }
 /* End. */
 
