@@ -1,4 +1,11 @@
 /*
+ *  Copyright 2008 Dormando (dormando@rydia.net).  All rights reserved.
+ *
+ *  Use and distribution licensed under the BSD license.  See
+ *  the LICENSE file for full text.
+*/
+
+/*
  * SHA-1 in C
  * By Steve Reid <steve@edmweb.com>
  * 100% Public Domain
