@@ -1,380 +1,172 @@
-/* sha1.h
+/*
+ * SHA-1 in C
+ * By Steve Reid <steve@edmweb.com>
+ * 100% Public Domain
  *
- * The sha1 hash function.
+ * Test Vectors (from FIPS PUB 180-1)
+ * "abc"
+ *   A9993E36 4706816A BA3E2571 7850C26C 9CD0D89D
+ * "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+ *   84983E44 1C3BD26E BAAE4AA1 F95129E5 E54670F1
+ * A million repetitions of "a"
+ *   34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F
  */
 
-/* nettle, low-level cryptographics library
- *
- * Copyright (C) 2001 Peter Gutmann, Andrew Kuchling, Niels Möller
- *  
- * The nettle library is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2.1 of the License, or (at your
- * option) any later version.
- * 
- * The nettle library is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU Lesser General Public License
- * along with the nettle library; see the file COPYING.LIB.  If not, write to
- * the Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
- * MA 02111-1307, USA.
- */
-
-/* Here's the first paragraph of Peter Gutmann's posting,
- * <30ajo5$oe8@ccu2.auckland.ac.nz>: 
- *
- * The following is my SHA (FIPS 180) code updated to allow use of the "fixed"
- * SHA, thanks to Jim Gillogly and an anonymous contributor for the information on
- * what's changed in the new version.  The fix is a simple change which involves
- * adding a single rotate in the initial expansion function.  It is unknown
- * whether this is an optimal solution to the problem which was discovered in the
- * SHA or whether it's simply a bandaid which fixes the problem with a minimum of
- * effort (for example the reengineering of a great many Capstone chips).
- */
-
+#include <sys/param.h>
+#include <string.h>
 #include "sha1.h"
 
-/* #include "macros.h" */
+#define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
+/*
+ * blk0() and blk() perform the initial expand.
+ * I got the idea of expanding during the round function from SSLeay
+ */
+#if BYTE_ORDER == LITTLE_ENDIAN
+# define blk0(i) (block->l[i] = (rol(block->l[i],24)&0xFF00FF00) \
+    |(rol(block->l[i],8)&0x00FF00FF))
+#else
+# define blk0(i) block->l[i]
+#endif
+#define blk(i) (block->l[i&15] = rol(block->l[(i+13)&15]^block->l[(i+8)&15] \
+    ^block->l[(i+2)&15]^block->l[i&15],1))
 
-/* A block, treated as a sequence of 32-bit words. */
-#define SHA1_DATA_LENGTH 16
+/*
+ * (R0+R1), R2, R3, R4 are the different operations (rounds) used in SHA1
+ */
+#define R0(v,w,x,y,z,i) z+=((w&(x^y))^y)+blk0(i)+0x5A827999+rol(v,5);w=rol(w,30);
+#define R1(v,w,x,y,z,i) z+=((w&(x^y))^y)+blk(i)+0x5A827999+rol(v,5);w=rol(w,30);
+#define R2(v,w,x,y,z,i) z+=(w^x^y)+blk(i)+0x6ED9EBA1+rol(v,5);w=rol(w,30);
+#define R3(v,w,x,y,z,i) z+=(((w|x)&y)|(w&x))+blk(i)+0x8F1BBCDC+rol(v,5);w=rol(w,30);
+#define R4(v,w,x,y,z,i) z+=(w^x^y)+blk(i)+0xCA62C1D6+rol(v,5);w=rol(w,30);
 
-/* The SHA f()-functions.  The f1 and f3 functions can be optimized to
-   save one boolean operation each - thanks to Rich Schroeppel,
-   rcs@cs.arizona.edu for discovering this */
-
-/* #define f1(x,y,z) ( ( x & y ) | ( ~x & z ) )            Rounds  0-19 */
-#define f1(x,y,z)   ( z ^ ( x & ( y ^ z ) ) )           /* Rounds  0-19 */
-#define f2(x,y,z)   ( x ^ y ^ z )                       /* Rounds 20-39 */
-/* #define f3(x,y,z) ( ( x & y ) | ( x & z ) | ( y & z ) ) Rounds 40-59 */
-#define f3(x,y,z)   ( ( x & y ) | ( z & ( x | y ) ) )   /* Rounds 40-59 */
-#define f4(x,y,z)   ( x ^ y ^ z )                       /* Rounds 60-79 */
-
-/* The SHA Mysterious Constants */
-
-#define K1  0x5A827999L                                 /* Rounds  0-19 */
-#define K2  0x6ED9EBA1L                                 /* Rounds 20-39 */
-#define K3  0x8F1BBCDCL                                 /* Rounds 40-59 */
-#define K4  0xCA62C1D6L                                 /* Rounds 60-79 */
-
-/* SHA initial values */
-
-#define h0init  0x67452301L
-#define h1init  0xEFCDAB89L
-#define h2init  0x98BADCFEL
-#define h3init  0x10325476L
-#define h4init  0xC3D2E1F0L
-
-/* 32-bit rotate left - kludged with shifts */
-
-#define ROTL(n,X)  ( ( (X) << (n) ) | ( (X) >> ( 32 - (n) ) ) )
-
-/* The initial expanding function.  The hash function is defined over an
-   80-word expanded input array W, where the first 16 are copies of the input
-   data, and the remaining 64 are defined by
-
-        W[ i ] = W[ i - 16 ] ^ W[ i - 14 ] ^ W[ i - 8 ] ^ W[ i - 3 ]
-
-   This implementation generates these values on the fly in a circular
-   buffer - thanks to Colin Plumb, colin@nyx10.cs.du.edu for this
-   optimization.
-
-   The updated SHA changes the expanding function by adding a rotate of 1
-   bit.  Thanks to Jim Gillogly, jim@rand.org, and an anonymous contributor
-   for this information */
-
-#define expand(W,i) ( W[ i & 15 ] = \
-		      ROTL( 1, ( W[ i & 15 ] ^ W[ (i - 14) & 15 ] ^ \
-				 W[ (i - 8) & 15 ] ^ W[ (i - 3) & 15 ] ) ) )
-
-
-/* The prototype SHA sub-round.  The fundamental sub-round is:
-
-        a' = e + ROTL( 5, a ) + f( b, c, d ) + k + data;
-        b' = a;
-        c' = ROTL( 30, b );
-        d' = c;
-        e' = d;
-
-   but this is implemented by unrolling the loop 5 times and renaming the
-   variables ( e, a, b, c, d ) = ( a', b', c', d', e' ) each iteration.
-   This code is then replicated 20 times for each of the 4 functions, using
-   the next 20 values from the W[] array each time */
-
-#define subRound(a, b, c, d, e, f, k, data) \
-    ( e += ROTL( 5, a ) + f( b, c, d ) + k + data, b = ROTL( 30, b ) )
-
-/* Initialize the SHA values */
-
+/*
+ * Hash a single 512-bit block. This is the core of the algorithm.
+ */
 void
-sha1_init(struct sha1_ctx *ctx)
+SHA1Transform(u_int32_t state[5], const u_int8_t buffer[SHA1_BLOCK_LENGTH])
 {
-  /* Set the h-vars to their initial values */
-  ctx->digest[ 0 ] = h0init;
-  ctx->digest[ 1 ] = h1init;
-  ctx->digest[ 2 ] = h2init;
-  ctx->digest[ 3 ] = h3init;
-  ctx->digest[ 4 ] = h4init;
+	u_int32_t a, b, c, d, e;
+	u_int8_t workspace[SHA1_BLOCK_LENGTH];
+	typedef union {
+		u_int8_t c[64];
+		u_int32_t l[16];
+	} CHAR64LONG16;
+	CHAR64LONG16 *block = (CHAR64LONG16 *)workspace;
 
-  /* Initialize bit count */
-  ctx->count_low = ctx->count_high = 0;
-  
-  /* Initialize buffer */
-  ctx->index = 0;
+	(void)memcpy(block, buffer, SHA1_BLOCK_LENGTH);
+
+	/* Copy context->state[] to working vars */
+	a = state[0];
+	b = state[1];
+	c = state[2];
+	d = state[3];
+	e = state[4];
+
+	/* 4 rounds of 20 operations each. Loop unrolled. */
+	R0(a,b,c,d,e, 0); R0(e,a,b,c,d, 1); R0(d,e,a,b,c, 2); R0(c,d,e,a,b, 3);
+	R0(b,c,d,e,a, 4); R0(a,b,c,d,e, 5); R0(e,a,b,c,d, 6); R0(d,e,a,b,c, 7);
+	R0(c,d,e,a,b, 8); R0(b,c,d,e,a, 9); R0(a,b,c,d,e,10); R0(e,a,b,c,d,11);
+	R0(d,e,a,b,c,12); R0(c,d,e,a,b,13); R0(b,c,d,e,a,14); R0(a,b,c,d,e,15);
+	R1(e,a,b,c,d,16); R1(d,e,a,b,c,17); R1(c,d,e,a,b,18); R1(b,c,d,e,a,19);
+	R2(a,b,c,d,e,20); R2(e,a,b,c,d,21); R2(d,e,a,b,c,22); R2(c,d,e,a,b,23);
+	R2(b,c,d,e,a,24); R2(a,b,c,d,e,25); R2(e,a,b,c,d,26); R2(d,e,a,b,c,27);
+	R2(c,d,e,a,b,28); R2(b,c,d,e,a,29); R2(a,b,c,d,e,30); R2(e,a,b,c,d,31);
+	R2(d,e,a,b,c,32); R2(c,d,e,a,b,33); R2(b,c,d,e,a,34); R2(a,b,c,d,e,35);
+	R2(e,a,b,c,d,36); R2(d,e,a,b,c,37); R2(c,d,e,a,b,38); R2(b,c,d,e,a,39);
+	R3(a,b,c,d,e,40); R3(e,a,b,c,d,41); R3(d,e,a,b,c,42); R3(c,d,e,a,b,43);
+	R3(b,c,d,e,a,44); R3(a,b,c,d,e,45); R3(e,a,b,c,d,46); R3(d,e,a,b,c,47);
+	R3(c,d,e,a,b,48); R3(b,c,d,e,a,49); R3(a,b,c,d,e,50); R3(e,a,b,c,d,51);
+	R3(d,e,a,b,c,52); R3(c,d,e,a,b,53); R3(b,c,d,e,a,54); R3(a,b,c,d,e,55);
+	R3(e,a,b,c,d,56); R3(d,e,a,b,c,57); R3(c,d,e,a,b,58); R3(b,c,d,e,a,59);
+	R4(a,b,c,d,e,60); R4(e,a,b,c,d,61); R4(d,e,a,b,c,62); R4(c,d,e,a,b,63);
+	R4(b,c,d,e,a,64); R4(a,b,c,d,e,65); R4(e,a,b,c,d,66); R4(d,e,a,b,c,67);
+	R4(c,d,e,a,b,68); R4(b,c,d,e,a,69); R4(a,b,c,d,e,70); R4(e,a,b,c,d,71);
+	R4(d,e,a,b,c,72); R4(c,d,e,a,b,73); R4(b,c,d,e,a,74); R4(a,b,c,d,e,75);
+	R4(e,a,b,c,d,76); R4(d,e,a,b,c,77); R4(c,d,e,a,b,78); R4(b,c,d,e,a,79);
+
+	/* Add the working vars back into context.state[] */
+	state[0] += a;
+	state[1] += b;
+	state[2] += c;
+	state[3] += d;
+	state[4] += e;
+
+	/* Wipe variables */
+	a = b = c = d = e = 0;
 }
 
-/* Perform the SHA transformation.  Note that this code, like MD5, seems to
-   break some optimizing compilers due to the complexity of the expressions
-   and the size of the basic block.  It may be necessary to split it into
-   sections, e.g. based on the four subrounds
 
-   Note that this function destroys the data area */
-
-static void
-sha1_transform(uint32_t *state, uint32_t *data)
-{
-  uint32_t A, B, C, D, E;     /* Local vars */
-
-  /* Set up first buffer and local data buffer */
-  A = state[0];
-  B = state[1];
-  C = state[2];
-  D = state[3];
-  E = state[4];
-
-  /* Heavy mangling, in 4 sub-rounds of 20 interations each. */
-  subRound( A, B, C, D, E, f1, K1, data[ 0] );
-  subRound( E, A, B, C, D, f1, K1, data[ 1] );
-  subRound( D, E, A, B, C, f1, K1, data[ 2] );
-  subRound( C, D, E, A, B, f1, K1, data[ 3] );
-  subRound( B, C, D, E, A, f1, K1, data[ 4] );
-  subRound( A, B, C, D, E, f1, K1, data[ 5] );
-  subRound( E, A, B, C, D, f1, K1, data[ 6] );
-  subRound( D, E, A, B, C, f1, K1, data[ 7] );
-  subRound( C, D, E, A, B, f1, K1, data[ 8] );
-  subRound( B, C, D, E, A, f1, K1, data[ 9] );
-  subRound( A, B, C, D, E, f1, K1, data[10] );
-  subRound( E, A, B, C, D, f1, K1, data[11] );
-  subRound( D, E, A, B, C, f1, K1, data[12] );
-  subRound( C, D, E, A, B, f1, K1, data[13] );
-  subRound( B, C, D, E, A, f1, K1, data[14] );
-  subRound( A, B, C, D, E, f1, K1, data[15] );
-  subRound( E, A, B, C, D, f1, K1, expand( data, 16 ) );
-  subRound( D, E, A, B, C, f1, K1, expand( data, 17 ) );
-  subRound( C, D, E, A, B, f1, K1, expand( data, 18 ) );
-  subRound( B, C, D, E, A, f1, K1, expand( data, 19 ) );
-
-  subRound( A, B, C, D, E, f2, K2, expand( data, 20 ) );
-  subRound( E, A, B, C, D, f2, K2, expand( data, 21 ) );
-  subRound( D, E, A, B, C, f2, K2, expand( data, 22 ) );
-  subRound( C, D, E, A, B, f2, K2, expand( data, 23 ) );
-  subRound( B, C, D, E, A, f2, K2, expand( data, 24 ) );
-  subRound( A, B, C, D, E, f2, K2, expand( data, 25 ) );
-  subRound( E, A, B, C, D, f2, K2, expand( data, 26 ) );
-  subRound( D, E, A, B, C, f2, K2, expand( data, 27 ) );
-  subRound( C, D, E, A, B, f2, K2, expand( data, 28 ) );
-  subRound( B, C, D, E, A, f2, K2, expand( data, 29 ) );
-  subRound( A, B, C, D, E, f2, K2, expand( data, 30 ) );
-  subRound( E, A, B, C, D, f2, K2, expand( data, 31 ) );
-  subRound( D, E, A, B, C, f2, K2, expand( data, 32 ) );
-  subRound( C, D, E, A, B, f2, K2, expand( data, 33 ) );
-  subRound( B, C, D, E, A, f2, K2, expand( data, 34 ) );
-  subRound( A, B, C, D, E, f2, K2, expand( data, 35 ) );
-  subRound( E, A, B, C, D, f2, K2, expand( data, 36 ) );
-  subRound( D, E, A, B, C, f2, K2, expand( data, 37 ) );
-  subRound( C, D, E, A, B, f2, K2, expand( data, 38 ) );
-  subRound( B, C, D, E, A, f2, K2, expand( data, 39 ) );
-
-  subRound( A, B, C, D, E, f3, K3, expand( data, 40 ) );
-  subRound( E, A, B, C, D, f3, K3, expand( data, 41 ) );
-  subRound( D, E, A, B, C, f3, K3, expand( data, 42 ) );
-  subRound( C, D, E, A, B, f3, K3, expand( data, 43 ) );
-  subRound( B, C, D, E, A, f3, K3, expand( data, 44 ) );
-  subRound( A, B, C, D, E, f3, K3, expand( data, 45 ) );
-  subRound( E, A, B, C, D, f3, K3, expand( data, 46 ) );
-  subRound( D, E, A, B, C, f3, K3, expand( data, 47 ) );
-  subRound( C, D, E, A, B, f3, K3, expand( data, 48 ) );
-  subRound( B, C, D, E, A, f3, K3, expand( data, 49 ) );
-  subRound( A, B, C, D, E, f3, K3, expand( data, 50 ) );
-  subRound( E, A, B, C, D, f3, K3, expand( data, 51 ) );
-  subRound( D, E, A, B, C, f3, K3, expand( data, 52 ) );
-  subRound( C, D, E, A, B, f3, K3, expand( data, 53 ) );
-  subRound( B, C, D, E, A, f3, K3, expand( data, 54 ) );
-  subRound( A, B, C, D, E, f3, K3, expand( data, 55 ) );
-  subRound( E, A, B, C, D, f3, K3, expand( data, 56 ) );
-  subRound( D, E, A, B, C, f3, K3, expand( data, 57 ) );
-  subRound( C, D, E, A, B, f3, K3, expand( data, 58 ) );
-  subRound( B, C, D, E, A, f3, K3, expand( data, 59 ) );
-
-  subRound( A, B, C, D, E, f4, K4, expand( data, 60 ) );
-  subRound( E, A, B, C, D, f4, K4, expand( data, 61 ) );
-  subRound( D, E, A, B, C, f4, K4, expand( data, 62 ) );
-  subRound( C, D, E, A, B, f4, K4, expand( data, 63 ) );
-  subRound( B, C, D, E, A, f4, K4, expand( data, 64 ) );
-  subRound( A, B, C, D, E, f4, K4, expand( data, 65 ) );
-  subRound( E, A, B, C, D, f4, K4, expand( data, 66 ) );
-  subRound( D, E, A, B, C, f4, K4, expand( data, 67 ) );
-  subRound( C, D, E, A, B, f4, K4, expand( data, 68 ) );
-  subRound( B, C, D, E, A, f4, K4, expand( data, 69 ) );
-  subRound( A, B, C, D, E, f4, K4, expand( data, 70 ) );
-  subRound( E, A, B, C, D, f4, K4, expand( data, 71 ) );
-  subRound( D, E, A, B, C, f4, K4, expand( data, 72 ) );
-  subRound( C, D, E, A, B, f4, K4, expand( data, 73 ) );
-  subRound( B, C, D, E, A, f4, K4, expand( data, 74 ) );
-  subRound( A, B, C, D, E, f4, K4, expand( data, 75 ) );
-  subRound( E, A, B, C, D, f4, K4, expand( data, 76 ) );
-  subRound( D, E, A, B, C, f4, K4, expand( data, 77 ) );
-  subRound( C, D, E, A, B, f4, K4, expand( data, 78 ) );
-  subRound( B, C, D, E, A, f4, K4, expand( data, 79 ) );
-
-  /* Build message digest */
-  state[0] += A;
-  state[1] += B;
-  state[2] += C;
-  state[3] += D;
-  state[4] += E;
-}
-
-static void
-sha1_block(struct sha1_ctx *ctx, const uint8_t *block)
-{
-  uint32_t data[SHA1_DATA_LENGTH];
-  int i;
-
-  /* Update block count */
-  if (!++ctx->count_low)
-    ++ctx->count_high;
-
-  /* Endian independent conversion */
-  for (i = 0; i<SHA1_DATA_LENGTH; i++, block += 4)
-    data[i] = READ_UINT32(block);
-
-  sha1_transform(ctx->digest, data);
-}
-
+/*
+ * SHA1Init - Initialize new context
+ */
 void
-sha1_update(struct sha1_ctx *ctx,
-	    unsigned length, const uint8_t *buffer)
+SHA1Init(SHA1_CTX *context)
 {
-  if (ctx->index)
-    { /* Try to fill partial block */
-      unsigned left = SHA1_DATA_SIZE - ctx->index;
-      if (length < left)
-	{
-	  memcpy(ctx->block + ctx->index, buffer, length);
-	  ctx->index += length;
-	  return; /* Finished */
+
+	/* SHA1 initialization constants */
+	context->count = 0;
+	context->state[0] = 0x67452301;
+	context->state[1] = 0xEFCDAB89;
+	context->state[2] = 0x98BADCFE;
+	context->state[3] = 0x10325476;
+	context->state[4] = 0xC3D2E1F0;
+}
+
+
+/*
+ * Run your data through this.
+ */
+void
+SHA1Update(SHA1_CTX *context, const u_int8_t *data, size_t len)
+{
+	size_t i, j;
+
+	j = (size_t)((context->count >> 3) & 63);
+	context->count += (len << 3);
+	if ((j + len) > 63) {
+		(void)memcpy(&context->buffer[j], data, (i = 64-j));
+		SHA1Transform(context->state, context->buffer);
+		for ( ; i + 63 < len; i += 64)
+			SHA1Transform(context->state, (u_int8_t *)&data[i]);
+		j = 0;
+	} else {
+		i = 0;
 	}
-      else
-	{
-	  memcpy(ctx->block + ctx->index, buffer, left);
-	  sha1_block(ctx, ctx->block);
-	  buffer += left;
-	  length -= left;
-	}
-    }
-  while (length >= SHA1_DATA_SIZE)
-    {
-      sha1_block(ctx, buffer);
-      buffer += SHA1_DATA_SIZE;
-      length -= SHA1_DATA_SIZE;
-    }
-  if ((ctx->index = length))     /* This assignment is intended */
-    /* Buffer leftovers */
-    memcpy(ctx->block, buffer, length);
+	(void)memcpy(&context->buffer[j], &data[i], len - i);
 }
-	  
-/* Final wrapup - pad to SHA1_DATA_SIZE-byte boundary with the bit pattern
-   1 0* (64-bit count of bits processed, MSB-first) */
 
+
+/*
+ * Add padding and return the message digest.
+ */
 void
-sha1_final(struct sha1_ctx *ctx)
+SHA1Pad(SHA1_CTX *context)
 {
-  uint32_t data[SHA1_DATA_LENGTH];
-  int i;
-  int words;
+	u_int8_t finalcount[8];
+	u_int i;
 
-  i = ctx->index;
-  
-  /* Set the first char of padding to 0x80.  This is safe since there is
-     always at least one byte free */
-
-  assert(i < SHA1_DATA_SIZE);
-  ctx->block[i++] = 0x80;
-
-  /* Fill rest of word */
-  for( ; i & 3; i++)
-    ctx->block[i] = 0;
-
-  /* i is now a multiple of the word size 4 */
-  words = i >> 2;
-  for (i = 0; i < words; i++)
-    data[i] = READ_UINT32(ctx->block + 4*i);
-  
-  if (words > (SHA1_DATA_LENGTH-2))
-    { /* No room for length in this block. Process it and
-       * pad with another one */
-      for (i = words ; i < SHA1_DATA_LENGTH; i++)
-	data[i] = 0;
-      sha1_transform(ctx->digest, data);
-      for (i = 0; i < (SHA1_DATA_LENGTH-2); i++)
-	data[i] = 0;
-    }
-  else
-    for (i = words ; i < SHA1_DATA_LENGTH - 2; i++)
-      data[i] = 0;
-
-  /* There are 512 = 2^9 bits in one block */
-  data[SHA1_DATA_LENGTH-2] = (ctx->count_high << 9) | (ctx->count_low >> 23);
-  data[SHA1_DATA_LENGTH-1] = (ctx->count_low << 9) | (ctx->index << 3);
-  sha1_transform(ctx->digest, data);
+	for (i = 0; i < 8; i++) {
+		finalcount[i] = (u_int8_t)((context->count >>
+		    ((7 - (i & 7)) * 8)) & 255);	/* Endian independent */
+	}
+	SHA1Update(context, (u_int8_t *)"\200", 1);
+	while ((context->count & 504) != 448)
+		SHA1Update(context, (u_int8_t *)"\0", 1);
+	SHA1Update(context, finalcount, 8); /* Should cause a SHA1Transform() */
 }
 
 void
-sha1_digest(const struct sha1_ctx *ctx,
-	    unsigned length,
-	    uint8_t *digest)
+SHA1Final(u_int8_t digest[SHA1_DIGEST_LENGTH], SHA1_CTX *context)
 {
-  unsigned i;
-  unsigned words;
-  unsigned leftover;
-  
-  assert(length <= SHA1_DIGEST_SIZE);
+	u_int i;
 
-  words = length / 4;
-  leftover = length % 4;
-
-  for (i = 0; i < words; i++, digest += 4)
-    WRITE_UINT32(digest, ctx->digest[i]);
-
-  if (leftover)
-    {
-      uint32_t word;
-      unsigned j = leftover;
-      
-      assert(i < _SHA1_DIGEST_LENGTH);
-      
-      word = ctx->digest[i];
-      
-      switch (leftover)
-	{
-	default:
-	  abort();
-	case 3:
-	  digest[--j] = (word >> 8) & 0xff;
-	  /* Fall through */
-	case 2:
-	  digest[--j] = (word >> 16) & 0xff;
-	  /* Fall through */
-	case 1:
-	  digest[--j] = (word >> 24) & 0xff;
+	SHA1Pad(context);
+	if (digest) {
+		for (i = 0; i < SHA1_DIGEST_LENGTH; i++) {
+			digest[i] = (u_int8_t)
+			   ((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 255);
+		}
+		memset(context, 0, sizeof(*context));
 	}
-    }
 }

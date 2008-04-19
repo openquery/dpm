@@ -656,69 +656,64 @@ static void my_crypt(char *dst, const unsigned char *s1, const unsigned char *s2
  * dst is a 20 byte buffer to receive the jumbled mess. */
 static void my_scramble(char *dst, const char *random, const char *pass)
 {
-    struct sha1_ctx context;
-    uint8_t hash1[SHA1_DIGEST_SIZE];
-    uint8_t hash2[SHA1_DIGEST_SIZE];
+    SHA1_CTX context;
+    uint8_t hash1[SHA1_DIGEST_LENGTH];
+    uint8_t hash2[SHA1_DIGEST_LENGTH];
     /* Make sure the null terminator's in the right spot. */
-    dst[SHA1_DIGEST_SIZE] = '\0';
+    dst[SHA1_DIGEST_LENGTH] = '\0';
 
     /* First hash the password. */
-    sha1_init(&context);
-    sha1_update(&context, strlen(pass), (const uint8_t *) pass);
-    sha1_final(&context);
-    sha1_digest(&context, SHA1_DIGEST_SIZE, hash1);
+    SHA1Init(&context);
+    SHA1Update(&context, (const uint8_t *) pass, strlen(pass));
+    SHA1Final(hash1, &context);
 
     /* Second, hash the hash. */
-    sha1_init(&context);
-    sha1_update(&context, SHA1_DIGEST_SIZE, hash1);
-    sha1_final(&context);
-    sha1_digest(&context, SHA1_DIGEST_SIZE, hash2);
+    SHA1Init(&context);
+    SHA1Update(&context, hash1, SHA1_DIGEST_LENGTH);
+    SHA1Final(hash2, &context);
 
     /* Now we have the equivalent of SELECT PASSWORD('whatever') */
     /* Now SHA1 the random message against hash2, then xor it against hash1 */
-    sha1_init(&context);
-    sha1_update(&context, SHA1_DIGEST_SIZE, (const uint8_t *) random);
-    sha1_update(&context, SHA1_DIGEST_SIZE, hash2);
-    sha1_final(&context);
-    sha1_digest(&context, SHA1_DIGEST_SIZE, (uint8_t *) dst);
+    SHA1Init(&context);
+    SHA1Update(&context, (const uint8_t *) random, SHA1_DIGEST_LENGTH);
+    SHA1Update(&context, hash2, SHA1_DIGEST_LENGTH);
+    SHA1Final((uint8_t *) dst, &context);
 
-    my_crypt((char *)dst, (const unsigned char *) dst, hash1, SHA1_DIGEST_SIZE);
+    my_crypt((char *)dst, (const unsigned char *) dst, hash1, SHA1_DIGEST_LENGTH);
 
     /* The sha1 context has temporary data that needs to disappear. */
-    memset(&context, 0, sizeof(struct sha1_ctx));
+    memset(&context, 0, sizeof(SHA1_CTX));
 }
 
 /* Server side check. */
 static int my_check_scramble(const char *remote_scram, const char *random, const char *stored_hash)
 {
-    uint8_t pass_hash[SHA1_DIGEST_SIZE];
-    uint8_t rand_hash[SHA1_DIGEST_SIZE];
-    uint8_t pass_orig[SHA1_DIGEST_SIZE];
-    uint8_t pass_check[SHA1_DIGEST_SIZE];
-    struct sha1_ctx context;
+    uint8_t pass_hash[SHA1_DIGEST_LENGTH];
+    uint8_t rand_hash[SHA1_DIGEST_LENGTH];
+    uint8_t pass_orig[SHA1_DIGEST_LENGTH];
+    uint8_t pass_check[SHA1_DIGEST_LENGTH];
+    SHA1_CTX context;
 
     /* Parse string into bytes... */
     my_hex2octet(pass_hash, stored_hash, strlen(stored_hash));
 
     /* Muck up our view of the password against our original random num */
-    sha1_init(&context);
-    sha1_update(&context, SHA1_DIGEST_SIZE, (const uint8_t *) random);
-    sha1_update(&context, SHA1_DIGEST_SIZE, pass_hash);
-    sha1_final(&context);
-    sha1_digest(&context, SHA1_DIGEST_SIZE, rand_hash);
+    SHA1Init(&context);
+    SHA1Update(&context, (const uint8_t *) random, SHA1_DIGEST_LENGTH);
+    SHA1Update(&context, pass_hash, SHA1_DIGEST_LENGTH);
+    SHA1Final(rand_hash, &context);
 
     /* Pull out the client sha1 */
-    my_crypt((char *) pass_orig, (const unsigned char *) rand_hash, (const unsigned char *) remote_scram, SHA1_DIGEST_SIZE);
+    my_crypt((char *) pass_orig, (const unsigned char *) rand_hash, (const unsigned char *) remote_scram, SHA1_DIGEST_LENGTH);
 
     /* Update it to be more like our own */
-    sha1_init(&context);
-    sha1_update(&context, SHA1_DIGEST_SIZE, pass_orig);
-    sha1_final(&context);
-    sha1_digest(&context, SHA1_DIGEST_SIZE, pass_check);
-    memset(&context, 0, sizeof(struct sha1_ctx));
+    SHA1Init(&context);
+    SHA1Update(&context, pass_orig, SHA1_DIGEST_LENGTH);
+    SHA1Final(pass_check, &context);
+    memset(&context, 0, sizeof(SHA1_CTX));
 
     /* Compare */
-    return memcmp(pass_hash, pass_check, SHA1_DIGEST_SIZE);
+    return memcmp(pass_hash, pass_check, SHA1_DIGEST_LENGTH);
 }
 
 /* If we're ready to send the next packet along, prep the header and
@@ -849,7 +844,7 @@ void *my_new_handshake_packet()
     p->server_language = 8;
     p->server_status = SERVER_STATUS_AUTOCOMMIT;
 
-    for (i = 0; i != SHA1_DIGEST_SIZE; i++) {
+    for (i = 0; i != SHA1_DIGEST_LENGTH; i++) {
         read(urandom_sock, &next_rand, 1);
         p->scramble_buff[i] = next_rand * 94 + 33;
     }
